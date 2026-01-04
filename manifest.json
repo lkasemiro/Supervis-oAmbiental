@@ -1,0 +1,33 @@
+{
+  "name": "CEDAE – Formulário de Visita Técnica de Supervisão Ambiental",
+  "short_name": "Relatório de Supervisão Ambiental",
+  "description": "Aplicativo técnico para registro de visitas de supervisão ambiental com suporte offline.",
+  "start_url": "/pwa_modular/index.html",
+  "scope": "/pwa_modular/",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#003366",
+  "orientation": "portrait-primary",
+  "icons": [
+    {
+      "src": "/pwa_modular/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/pwa_modular/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/pwa_modular/icon-maskable.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ]
+  
+ 
+}
