@@ -1,0 +1,81 @@
+/* ============================================================
+   STYLE.CSS – Estilos complementares do PWA de Supervisão Ambiental
+   ============================================================ */
+
+/* Ajuste para o body */
+body {
+  background-color: #ffffff;
+  -webkit-tap-highlight-color: transparent;
+  font-family: Arial, sans-serif;
+}
+
+/* Ajuste fino para contêineres */
+.section-card {
+  border-radius: 16px;
+}
+
+/* Botões padrão */
+button.btn {
+  transition: 0.15s ease;
+}
+
+button.btn:hover {
+  transform: translateY(-2px);
+}
+
+/* Input padrão */
+input[type="text"],
+input[type="number"],
+textarea,
+select {
+  outline: none;
+}
+
+/* Borda padrão quando Tailwind não estiver disponível offline */
+input,
+textarea,
+select {
+  border: 1px solid #ccc;
+  border-radius: 6px;
+}
+
+/* Cartão de imagem de apoio */
+img.support-img {
+  max-height: 240px;
+  border-radius: 12px;
+  border: 1px solid #ddd;
+}
+
+/* Layout para listagem de fotos (lista textual) */
+.foto-lista-item {
+  padding: 4px 8px;
+  background: #f8f8f8;
+  border-radius: 6px;
+  border: 1px solid #ddd;
+  font-size: 12px;
+}
+
+/* Modal da câmera */
+#camera-modal {
+  backdrop-filter: blur(2px);
+}
+
+#camera-placeholder {
+  color: #666;
+  font-size: 14px;
+}
+
+/* Mensagem superior */
+#message-box {
+  transition: opacity 0.4s ease-in-out;
+}
+
+/* Seções escondidas por lógica condicional */
+.hidden-by-condition {
+  display: none !important;
+}
+
+/* FOTOS NO TOPO (PGE – Sublocal) */
+#fotos_sublocal_topo img {
+  max-height: 80px;
+}
