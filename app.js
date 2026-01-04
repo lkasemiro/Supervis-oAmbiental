@@ -28,6 +28,8 @@ const APP_STATE = {
   local: "",
   colaborador: "",
   data: "",
+  eventosEspaciais: [], // [{lat, lng, accuracy, timestamp, contexto}]
+
 
   tipoRoteiro: null, // 'geral' | 'pge' | 'aa'
   roteiro: null,
@@ -174,10 +176,22 @@ function obterLocalizacaoAtual() {
       GEO_STATE.latitude = latitude;
       GEO_STATE.longitude = longitude;
       GEO_STATE.accuracy = accuracy;
-      GEO_STATE.timestamp = new Date().toISOString();
+     GEO_STATE.timestamp = new Date().toISOString();
 
-      atualizarMapaComLocalizacao(latitude, longitude, accuracy);
-    },
+APP_STATE.eventosEspaciais.push({
+  lat: latitude,
+  lng: longitude,
+  accuracy: accuracy,
+  timestamp: GEO_STATE.timestamp,
+  contexto: {
+    tipoRoteiro: APP_STATE.tipoRoteiro,
+    localPGE: document.getElementById("local_pge_select")?.value || null,
+    sublocalPGE: document.getElementById("sublocal_select")?.value || null
+  }
+});
+
+atualizarMapaComLocalizacao(latitude, longitude, accuracy);
+
     (err) => {
       console.warn("Erro de geolocalização:", err);
       showMessage(
@@ -262,6 +276,15 @@ if (GEO_STATE.latitude && GEO_STATE.longitude) {
 
   };
 }
+// -------------------------------------------
+// REGISTRO GLOBAL DE ROTEIROS
+// -------------------------------------------
+const ROTEIROS = {
+  geral: window.ROTEIRO_GERAL,
+  pge: window.ROTEIRO_PGE,
+  aa: window.ROTEIRO_AA
+};
+
 
 // -------------------------------------------
 // SELEÇÃO DO ROTEIRO
@@ -325,10 +348,12 @@ function montarLocaisPGE() {
     ${locais.map((l) => `<option value="${l}">${l}</option>`).join("")}
   `;
 
-  sel.onchange = () => {
-    montarSublocaisPGE();
-    renderFormulario();
-  };
+ sel.onchange = () => {
+  obterLocalizacaoAtual(); // 📍 NOVO EVENTO ESPACIAL
+  montarSublocaisPGE();
+  renderFormulario();
+};
+
 
   const subSel = document.getElementById("sublocal_select");
   if (subSel) {
@@ -361,7 +386,11 @@ function montarSublocaisPGE() {
     ${subs.map((s) => `<option value="${s}">${s}</option>`).join("")}
   `;
 
-  selSub.onchange = () => renderFormulario();
+  selSub.onchange = () => {
+  obterLocalizacaoAtual(); // 📍 NOVO PONTO GPS POR SUBLOCAL
+  renderFormulario();
+};
+
 }
 
 // -------------------------------------------
@@ -1026,7 +1055,7 @@ async function recomeçar() {
 
   await clearFormData(APP_STATE.tipoRoteiro); // indexedDB.js
 
-  APP_STATE.roteiro = ROTEIROS[APP_STATE.tipoRoteiro];
+  APP_STATE.roteiro = ROTEIROS[tipo];
   APP_STATE.respostas = {};
   APP_STATE.fotos = {};
   APP_STATE.fotoIndex = {};
