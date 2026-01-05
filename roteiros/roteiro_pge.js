@@ -2628,3 +2628,4 @@ export const ROTEIRO_PGE = [
     "opcoes": ["Tratamento adequado", " Sem tratamento", " Não há necessidade de tratamento"]
   }
 ];
+
