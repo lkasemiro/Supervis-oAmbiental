@@ -10,7 +10,6 @@ const APP_SHELL = [
   "./icon.png",
   "./icon-192.png",
   "./icon-512.png",
-  "./icon-maskable.png",
   "./roteiros/roteiro_geral.js",
   "./roteiros/roteiro_pge.js",
   "./roteiros/roteiro_aa.js"
