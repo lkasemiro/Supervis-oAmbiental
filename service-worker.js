@@ -1,5 +1,10 @@
-const CACHE_NAME = "cedae-pwa-v10";
+// =============================================
+// SERVICE WORKER – PWA CEDAE (Versão Modular)
+// =============================================
 
+const CACHE_NAME = "cedae-pwa-v11-modular"; // Incrementado para forçar renovação
+
+// Lista exata de arquivos para funcionamento 100% offline
 const APP_SHELL = [
   "./",
   "./index.html",
@@ -8,27 +13,26 @@ const APP_SHELL = [
   "./manifest.json",
   "./style.css",
   "./icon.png", 
- "./roteiros/roteiro_geral.js",
+  "./roteiros/roteiro_geral.js",
   "./roteiros/roteiro_pge.js",
   "./roteiros/roteiro_aa.js"
 ];
 
 // INSTALL – Cache agressivo
 self.addEventListener("install", (event) => {
-  console.log("SW: Instalando nova versão...");
+  console.log("SW: Instalando nova versão modular...");
   event.waitUntil(
     caches.open(CACHE_NAME).then((cache) => {
-      // Usamos cache.addAll para o núcleo. 
-      // DICA: Se um desses arquivos falhar (404), o SW não instala.
+      // Importante: addAll falha se qualquer URL retornar 404
       return cache.addAll(APP_SHELL);
     })
   );
   self.skipWaiting();
 });
 
-// ACTIVATE – Limpeza de cache antigo
+// ACTIVATE – Limpeza de versões anteriores
 self.addEventListener("activate", (event) => {
-  console.log("SW: Versão ativa.");
+  console.log("SW: Versão modular ativa.");
   event.waitUntil(
     caches.keys().then((keys) =>
       Promise.all(
@@ -40,46 +44,49 @@ self.addEventListener("activate", (event) => {
   self.clients.claim();
 });
 
-// FETCH – Estratégia "Cache First" com correção de clone
+// FETCH – Estratégia "Cache First"
 self.addEventListener("fetch", (event) => {
   const request = event.request;
 
+  // Ignora extensões de navegador e esquemas não-http
   if (!request.url.startsWith('http')) return;
 
   event.respondWith(
     caches.match(request).then((cacheRes) => {
-      // 1. Se está no cache, retorna imediatamente
+      // 1. Se já está no cache, entrega imediatamente (Essencial para o Tinguá)
       if (cacheRes) return cacheRes;
 
-      // 2. Se não está, busca na rede
+      // 2. Se não está, busca na rede e tenta salvar para a próxima vez
       return fetch(request)
         .then((networkRes) => {
-          // Validação da resposta
+          // Validação: não cacheamos erros ou respostas de origens estranhas
           if (!networkRes || networkRes.status !== 200) {
             return networkRes;
           }
 
-          // CORREÇÃO: Clonamos IMEDIATAMENTE antes de qualquer outra ação
+          // CORREÇÃO DO ERRO DE CLONE:
+          // Apenas clonamos se a resposta for bem-sucedida.
           const responseToCache = networkRes.clone();
 
-          // Salvamento assíncrono no cache
           caches.open(CACHE_NAME).then((cache) => {
+            // Salva no cache de forma assíncrona para não atrasar a renderização
             cache.put(request, responseToCache);
           });
 
           return networkRes;
         })
         .catch((err) => {
-          console.error("SW: Erro na busca (Offline):", err);
-          // Fallback para navegação
+          // Fallback offline: Se for uma navegação de página, volta para o index
           if (request.mode === 'navigate') {
             return caches.match("./index.html");
           }
+          console.warn("SW: Recurso não disponível offline:", request.url);
         });
     })
   );
 });
 
+// Listener para atualização via interface
 self.addEventListener("message", (event) => {
   if (event.data && event.data.type === "SKIP_WAITING") {
     self.skipWaiting();
