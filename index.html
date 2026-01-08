@@ -35,22 +35,24 @@
 
 <script src="indexedDB.js"></script>
 
-<script type="module">
-    import { ROTEIRO_GERAL } from './roteiro_geral.js';
-    import { ROTEIRO_PGE } from './roteiro_pge.js';
-    import { ROTEIRO_AA } from './roteiro_aa.js';
+<<script type="module">
+    // Ajuste dos caminhos para a pasta 'roteiros'
+    import { ROTEIRO_GERAL } from './roteiros/roteiro_geral.js';
+    import { ROTEIRO_PGE } from './roteiros/roteiro_pge.js';
+    import { ROTEIRO_AA } from './roteiros/roteiro_aa.js';
 
-    // Globaliza os dados para o app.js
     window.ROTEIROS_DATA = {
         geral: ROTEIRO_GERAL,
         pge: ROTEIRO_PGE,
         aa: ROTEIRO_AA
     };
 
-    // Carrega o script principal como módulo para evitar erros de escopo
-    import('./app.js')
-        .then(() => console.log("App.js carregado com sucesso."))
-        .catch(err => console.error("Erro ao carregar app.js:", err));
+    // Importa o app.js como módulo para aceitar os 'exports' dos roteiros
+    import('./app.js').then(module => {
+        // Vincula funções necessárias ao window para uso em atributos onclick de HTML
+        window.abrirCamera = module.abrirCamera; 
+        console.log("App.js e roteiros carregados com sucesso.");
+    });
 </script>
 
 <script>
