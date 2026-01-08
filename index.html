@@ -33,26 +33,26 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/exceljs@4.4.0/dist/exceljs.min.js"></script>
 
-<script type="module">
-  import { ROTEIRO_GERAL } from './roteiros/roteiro_geral.js';
-  import { ROTEIRO_PGE } from './roteiros/roteiro_pge.js';
-  import { ROTEIRO_AA } from './roteiros/roteiro_aa.js';
-
-  // Disponibiliza globalmente para o app.js
-  window.ROTEIROS = {
-    geral: ROTEIRO_GERAL,
-    pge: ROTEIRO_PGE,
-    aa: ROTEIRO_AA
-  };
-
-  // Inicia o app apenas após carregar os roteiros
-  if (window.initApp) window.initApp();
-</script>
-
 <script src="indexedDB.js"></script>
-<script src="app.js"></script>
 
-<script>
+<script type="module">
+    // Importa os roteiros gerados pelo R
+    import { ROTEIRO_GERAL } from './roteiro_geral.js';
+    import { ROTEIRO_PGE } from './roteiro_pge.js';
+    import { ROTEIRO_AA } from './roteiro_aa.js';
+
+    // Disponibiliza globalmente para que o app.js (não-módulo) consiga ler
+    window.ROTEIROS_DATA = {
+        geral: ROTEIRO_GERAL,
+        pge: ROTEIRO_PGE,
+        aa: ROTEIRO_AA
+    };
+
+    // Garante que o app.js só execute após os dados estarem prontos
+    import('./app.js').then(() => {
+        console.log("App inicializado com roteiros carregados.");
+    });
+</script>
 if ("serviceWorker" in navigator) {
   window.addEventListener("load", () => {
     navigator.serviceWorker.register("service-worker.js")
