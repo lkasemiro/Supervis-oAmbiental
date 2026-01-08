@@ -13,9 +13,9 @@ const APP_SHELL = [
   "./manifest.json",
   "./style.css",
   "./icon.png", 
-  "./roteiro_geral.js",
-  "./roteiro_pge.js",
-  "./roteiro_aa.js"
+  "./roteiros/roteiro_geral.js", // Caminho corrigido
+  "./roteiros/roteiro_pge.js",   // Caminho corrigido
+  "./roteiros/roteiro_aa.js"     // Caminho corrigido
 ];
 
 // INSTALL – Cache agressivo
