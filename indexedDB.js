@@ -43,12 +43,16 @@ function openDB() {
 async function initIndexedDB(tipo) {
   try {
     const db = await openDB();
-    // Pré-carrega as respostas existentes para o estado do App
+    if (!tipo) return; // Não tenta carregar se não houver tipo definido
+    
     const respostas = await getAnswersMapFromDB(tipo);
-    Object.assign(APP_STATE.respostas, respostas);
+    // Garante que APP_STATE existe antes de atribuir
+    if (window.APP_STATE) {
+      Object.assign(APP_STATE.respostas, respostas);
+    }
     console.log(`DB: Dados carregados para o roteiro ${tipo}`);
   } catch (err) {
-    console.error("Erro ao iniciar DB:", err);
+    console.error("Erro ao iniciar DB (o app continuará em memória):", err);
   }
 }
 
