@@ -66,12 +66,7 @@ self.addEventListener("fetch", (event) => {
 
           // CORREÇÃO DO ERRO DE CLONE:
           // Apenas clonamos se a resposta for bem-sucedida.
-          const responseToCache = networkRes.clone();
-
-          caches.open(CACHE_NAME).then((cache) => {
-            // Salva no cache de forma assíncrona para não atrasar a renderização
-            cache.put(request, responseToCache);
-          });
+                    const responseToCache = networkRes.clone(); // CLONE AQUI antes de usar
 
           return networkRes;
         })
