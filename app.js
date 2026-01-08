@@ -102,31 +102,35 @@ function renderFormulario(secaoFiltrada = null) {
   
   let perguntas = APP_STATE.roteiro || [];
 
-  // Filtros PGE
+  // Filtros PGE (usando campos minúsculos vindos do R)
   if (APP_STATE.tipoRoteiro === "pge") {
-    const local = document.getElementById("local_pge_select")?.value;
-    const sublocal = document.getElementById("sublocal_select")?.value;
-    if (!local || !sublocal) {
+    const localSel = document.getElementById("local_pge_select")?.value;
+    const sublocalSel = document.getElementById("sublocal_select")?.value;
+    
+    if (!localSel || !sublocalSel) {
       container.innerHTML = `<div class="p-8 text-center text-gray-400">Selecione Local e Sublocal acima.</div>`;
       return;
     }
-    perguntas = perguntas.filter(p => p.Local === local && p.Sublocal === sublocal);
+    // O R exportou como 'local' e 'sublocal'
+    perguntas = perguntas.filter(p => p.local === localSel && p.sublocal === sublocalSel);
   }
 
+  // Filtro de Seção
   if (secaoFiltrada) {
-    perguntas = perguntas.filter(p => (p.Secao || p["Seção"]) === secaoFiltrada);
+    perguntas = perguntas.filter(p => p.secao === secaoFiltrada);
   }
 
-  // Renderização performática usando DocumentFragment
   const fragment = document.createDocumentFragment();
+  
   perguntas.forEach(p => {
     const div = document.createElement("div");
     div.className = "mb-6 p-4 bg-white rounded-lg shadow-sm border-l-4 border-blue-500";
     div.id = `group_${p.id}`;
     
+    // imagemApoio em minúsculo conforme script R
     div.innerHTML = `
-      ${p.ImagemApoio ? `<img src="${p.ImagemApoio}" class="mb-2 rounded max-h-40">` : ''}
-      <label class="block font-bold text-gray-700 mb-2">${p.Pergunta}</label>
+      ${p.imagemApoio ? `<img src="${p.imagemApoio}" class="mb-2 rounded max-h-40 border shadow-sm">` : ''}
+      <label class="block font-bold text-gray-700 mb-2">${p.pergunta}</label>
       <div id="input_container_${p.id}"></div>
     `;
     
@@ -139,41 +143,56 @@ function renderFormulario(secaoFiltrada = null) {
   container.appendChild(fragment);
   applyConditionalLogic();
 }
-
 function criarInputParaPergunta(p) {
   const val = APP_STATE.respostas[p.id] || "";
-  const tipo = (p.TipoInput || "text").toLowerCase();
+  // O script R gera 'tipo' e 'opcoes'
+  const tipo = (p.tipo || "text").toLowerCase();
   const el = document.createElement("div");
 
   if (tipo === "radio" || tipo === "checkboxgroup") {
-    const ops = (p.Opcoes || "").split(";").filter(Boolean);
+    // Como o R usou str_split, o JSON já vem como um Array [ "Opção A", "Opção B" ]
+    const ops = Array.isArray(p.opcoes) ? p.opcoes : [];
+    
     el.innerHTML = ops.map(op => `
-      <label class="inline-flex items-center mt-2 mr-4">
-        <input type="${tipo === 'radio' ? 'radio' : 'checkbox'}" name="${p.id}" value="${op}" 
-        ${val.includes(op) ? 'checked' : ''} class="w-5 h-5 text-blue-600">
+      <label class="inline-flex items-center mt-2 mr-4 cursor-pointer">
+        <input type="${tipo === 'radio' ? 'radio' : 'checkbox'}" 
+               name="${p.id}" 
+               value="${op}" 
+               ${val.toString().split(";").includes(op) ? 'checked' : ''} 
+               class="w-5 h-5 text-blue-600 border-gray-300 focus:ring-blue-500">
         <span class="ml-2 text-gray-700">${op}</span>
       </label>
     `).join("");
     
-    el.querySelectorAll('input').forEach(i => i.onchange = (e) => {
-      let result = e.target.value;
-      if (tipo === 'checkboxgroup') {
-        result = [...el.querySelectorAll('input:checked')].map(c => c.value).join(";");
-      }
-      autosave(p.id, result);
+    el.querySelectorAll('input').forEach(i => {
+      i.onchange = (e) => {
+        let result;
+        if (tipo === 'checkboxgroup') {
+          result = [...el.querySelectorAll('input:checked')].map(c => c.value).join(";");
+        } else {
+          result = e.target.value;
+        }
+        autosave(p.id, result);
+      };
     });
   } else if (tipo === "file") {
     el.innerHTML = `
-      <button onclick="abrirCamera('${p.id}')" class="bg-blue-600 text-white px-4 py-2 rounded-lg flex items-center gap-2">
+      <button type="button" onclick="abrirCamera('${p.id}')" 
+              class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg flex items-center gap-2 transition shadow-sm">
         📸 Capturar Foto
       </button>
-      <div id="fotos_${p.id}" class="mt-2 text-xs text-gray-500"></div>
+      <div id="fotos_${p.id}" class="mt-2 text-xs text-gray-500 italic">Nenhuma foto capturada</div>
     `;
   } else {
-    const input = document.createElement(tipo === "textarea" ? "textarea" : "input");
-    input.className = "w-full border rounded-lg p-2 focus:ring-2 focus:ring-blue-500 outline-none";
+    const isTextArea = tipo === "textarea";
+    const input = document.createElement(isTextArea ? "textarea" : "input");
+    
+    input.className = "w-full border border-gray-300 rounded-lg p-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition";
     input.value = val;
+    
     if (tipo === "number") input.type = "number";
+    if (isTextArea) input.rows = 3;
+    
     input.oninput = (e) => autosave(p.id, e.target.value);
     el.appendChild(input);
   }
