@@ -129,8 +129,8 @@ export const ROTEIRO_GERAL = [
     "id": 19,
     "secao": "Geradores",
     "pergunta": "7.3. Nº de geradores",
-    "tipo": "radio",
-    "opcoes": "number"
+    "tipo": "number",
+    "opcoes": null
   },
   {
     "id": 20,
@@ -393,7 +393,4 @@ export const ROTEIRO_GERAL = [
   }
 ];
 
-    "tipo": "textarea",
-    "opcoes": null
-  }
-];
+    
