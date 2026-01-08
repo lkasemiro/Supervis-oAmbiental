@@ -1,5 +1,5 @@
 // ===========================================
-// APP.JS – PWA MODULAR OTIMIZADO (V11)
+// APP.JS – PWA MODULAR OTIMIZADO (V12)
 // ===========================================
 
 const LOCAIS_VISITA = [
@@ -15,14 +15,17 @@ const APP_STATE = {
   respostas: {}, fotos: {}, fotoIndex: {}
 };
 
-let mapa = null, stream = null, currentPhotoInputId = null;
+let mapa = null, stream = null;
 const GEO_STATE = { latitude: null, longitude: null, accuracy: null, timestamp: null };
-let userMarker = null, accuracyCircle = null, topPhotoUrls = [];
+let userMarker = null, accuracyCircle = null;
 
 // --- NAVEGAÇÃO E UI ---
 const showScreen = (id) => {
   ["screen-cadastro", "screen-select-roteiro", "screen-formulario", "screen-final"]
-    .forEach(t => document.getElementById(t)?.classList.toggle("hidden", t !== id));
+    .forEach(t => {
+      const el = document.getElementById(t);
+      if (el) el.classList.toggle("hidden", t !== id);
+    });
 };
 
 const showMessage = (msg, ok = false) => {
@@ -61,7 +64,10 @@ function initCadastro() {
 
   btn.onclick = () => {
     const fields = ["avaliador", "local", "colaborador", "data_visita"];
-    const values = fields.reduce((acc, f) => ({ ...acc, [f]: document.getElementById(f).value.trim() }), {});
+    const values = fields.reduce((acc, f) => {
+      const el = document.getElementById(f);
+      return { ...acc, [f]: el ? el.value.trim() : "" };
+    }, {});
 
     if (Object.values(values).some(v => !v || v === "Selecionar Local...")) {
       return showMessage("Preencha todos os campos corretamente.", false);
@@ -71,46 +77,34 @@ function initCadastro() {
     fields.forEach(f => localStorage.setItem(f, values[f]));
     
     showScreen("screen-select-roteiro");
-  }; // Fechamento corrigido aqui
+    obterLocalizacaoAtual();
+  };
 }
 
 // --- ROTEIROS E FORMULÁRIO ---
 async function selectRoteiro(tipo) {
   try {
     APP_STATE.tipoRoteiro = tipo;
-    
-    // IMPORTANTE: O nome deve ser exatamente o que você definiu no window no index.html
     const dadosRoteiro = window.ROTEIROS_DATA ? window.ROTEIROS_DATA[tipo] : null;
     
     if (!dadosRoteiro) {
-        console.error("Erro: Roteiro não encontrado no objeto window.");
-        alert("Erro ao carregar roteiro. Verifique o console.");
+        console.error("Erro: Roteiro não encontrado.");
         return;
     }
 
     APP_STATE.roteiro = dadosRoteiro; 
-    
-    // Inicializa o banco e carrega respostas anteriores
     await initIndexedDB(tipo);
     
     const labels = { pge: "PGE", geral: "Geral", aa: "Acidentes Ambientais" };
     const labelEl = document.getElementById("roteiro-atual-label");
     if (labelEl) labelEl.textContent = labels[tipo];
 
-    // Lógica de interface para PGE
     const isPGE = tipo === "pge";
-    const localBox = document.getElementById("local_pge_box");
-    const sublocalBox = document.getElementById("sublocal_box");
+    document.getElementById("local_pge_box")?.classList.toggle("hidden", !isPGE);
+    document.getElementById("sublocal_box")?.classList.toggle("hidden", !isPGE);
+
+    if (isPGE) montarLocaisPGE();
     
-    if (localBox) localBox.classList.toggle("hidden", !isPGE);
-    if (sublocalBox) sublocalBox.classList.toggle("hidden", !isPGE);
-
-    if (isPGE) {
-        if (typeof montarLocaisPGE === "function") montarLocaisPGE();
-    }
-
-    // Renderização
-    if (typeof montarSecoes === "function") montarSecoes();
     renderFormulario();
     showScreen("screen-formulario");
   } catch (err) {
@@ -124,20 +118,16 @@ function renderFormulario(secaoFiltrada = null) {
   
   let perguntas = APP_STATE.roteiro || [];
 
-  // Filtros PGE (usando campos minúsculos vindos do R)
   if (APP_STATE.tipoRoteiro === "pge") {
     const localSel = document.getElementById("local_pge_select")?.value;
     const sublocalSel = document.getElementById("sublocal_select")?.value;
-    
     if (!localSel || !sublocalSel) {
       container.innerHTML = `<div class="p-8 text-center text-gray-400">Selecione Local e Sublocal acima.</div>`;
       return;
     }
-    // O R exportou como 'local' e 'sublocal'
     perguntas = perguntas.filter(p => p.local === localSel && p.sublocal === sublocalSel);
   }
 
-  // Filtro de Seção
   if (secaoFiltrada) {
     perguntas = perguntas.filter(p => p.secao === secaoFiltrada);
   }
@@ -149,7 +139,6 @@ function renderFormulario(secaoFiltrada = null) {
     div.className = "mb-6 p-4 bg-white rounded-lg shadow-sm border-l-4 border-blue-500";
     div.id = `group_${p.id}`;
     
-    // imagemApoio em minúsculo conforme script R
     div.innerHTML = `
       ${p.imagemApoio ? `<img src="${p.imagemApoio}" class="mb-2 rounded max-h-40 border shadow-sm">` : ''}
       <label class="block font-bold text-gray-700 mb-2">${p.pergunta}</label>
@@ -165,14 +154,13 @@ function renderFormulario(secaoFiltrada = null) {
   container.appendChild(fragment);
   applyConditionalLogic();
 }
+
 function criarInputParaPergunta(p) {
   const val = APP_STATE.respostas[p.id] || "";
-  // O script R gera 'tipo' e 'opcoes'
   const tipo = (p.tipo || "text").toLowerCase();
   const el = document.createElement("div");
 
   if (tipo === "radio" || tipo === "checkboxgroup") {
-    // Como o R usou str_split, o JSON já vem como um Array [ "Opção A", "Opção B" ]
     const ops = Array.isArray(p.opcoes) ? p.opcoes : [];
     
     el.innerHTML = ops.map(op => `
@@ -181,40 +169,32 @@ function criarInputParaPergunta(p) {
                name="${p.id}" 
                value="${op}" 
                ${val.toString().split(";").includes(op) ? 'checked' : ''} 
-               class="w-5 h-5 text-blue-600 border-gray-300 focus:ring-blue-500">
+               class="w-5 h-5 text-blue-600">
         <span class="ml-2 text-gray-700">${op}</span>
       </label>
     `).join("");
     
     el.querySelectorAll('input').forEach(i => {
       i.onchange = (e) => {
-        let result;
-        if (tipo === 'checkboxgroup') {
-          result = [...el.querySelectorAll('input:checked')].map(c => c.value).join(";");
-        } else {
-          result = e.target.value;
-        }
+        let result = tipo === 'checkboxgroup' 
+          ? [...el.querySelectorAll('input:checked')].map(c => c.value).join(";")
+          : e.target.value;
         autosave(p.id, result);
       };
     });
   } else if (tipo === "file") {
     el.innerHTML = `
       <button type="button" onclick="abrirCamera('${p.id}')" 
-              class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg flex items-center gap-2 transition shadow-sm">
+              class="bg-blue-600 text-white px-4 py-2 rounded-lg flex items-center gap-2">
         📸 Capturar Foto
       </button>
       <div id="fotos_${p.id}" class="mt-2 text-xs text-gray-500 italic">Nenhuma foto capturada</div>
     `;
   } else {
-    const isTextArea = tipo === "textarea";
-    const input = document.createElement(isTextArea ? "textarea" : "input");
-    
-    input.className = "w-full border border-gray-300 rounded-lg p-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition";
+    const input = document.createElement(tipo === "textarea" ? "textarea" : "input");
+    input.className = "w-full border rounded-lg p-2 outline-none focus:ring-2 focus:ring-blue-500";
     input.value = val;
-    
     if (tipo === "number") input.type = "number";
-    if (isTextArea) input.rows = 3;
-    
     input.oninput = (e) => autosave(p.id, e.target.value);
     el.appendChild(input);
   }
@@ -223,30 +203,37 @@ function criarInputParaPergunta(p) {
 
 function autosave(id, valor) {
   APP_STATE.respostas[id] = valor;
-  saveAnswerToDB(id, valor); // No indexedDB.js
+  if (typeof saveAnswerToDB === "function") saveAnswerToDB(id, valor);
   applyConditionalLogic();
 }
 
 function applyConditionalLogic() {
   APP_STATE.roteiro?.forEach(p => {
-    const cond = p.Condicao || p["Condição"];
-    const pai = p.Pai;
+    const cond = p.condicao || p.Condicao; 
+    const pai = p.pai || p.Pai;
     if (cond && pai) {
       const el = document.getElementById(`group_${p.id}`);
-      el?.classList.toggle("hidden", APP_STATE.respostas[pai] !== cond);
+      if (el) el.classList.toggle("hidden", APP_STATE.respostas[pai] !== cond);
     }
   });
 }
 
-// --- FINALIZAÇÃO ---
+function initMapa() {
+  const mapContainer = document.getElementById("mapa");
+  if (!mapContainer || mapa) return;
+  mapa = L.map('mapa').setView([-22.9068, -43.1729], 12);
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(mapa);
+}
+
 function initApp() {
   const sel = document.getElementById("local");
   if (sel) sel.innerHTML = LOCAIS_VISITA.map(l => `<option value="${l}">${l}</option>`).join("");
   
   ["avaliador", "local", "colaborador", "data_visita"].forEach(f => {
     const val = localStorage.getItem(f);
-    if (val) {
-      document.getElementById(f).value = val;
+    const el = document.getElementById(f);
+    if (val && el) {
+      el.value = val;
       APP_STATE[f] = val;
     }
   });
@@ -256,9 +243,8 @@ function initApp() {
   showScreen("screen-cadastro");
 }
 
-// Exposição Global
+// Inicialização Global
 window.selectRoteiro = selectRoteiro;
-window.abrirCamera = abrirCamera;
 window.initApp = initApp;
 
 document.addEventListener("DOMContentLoaded", initApp);
