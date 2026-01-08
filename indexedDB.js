@@ -1,229 +1,161 @@
 // =====================================================
-// indexedDB.js – BANCO UNIFICADO PARA GERAL / PGE / AA
+// indexedDB.js – BANCO UNIFICADO OTIMIZADO
 // =====================================================
 
 let dbPromise = null;
 
-// -----------------------------------------------------
-// ABRIR BANCO
-// -----------------------------------------------------
 function openDB() {
   if (dbPromise) return dbPromise;
 
   dbPromise = new Promise((resolve, reject) => {
-    const request = indexedDB.open("cedae_pwa_db", 2);
+    // Versão incrementada para garantir que os índices existam
+    const request = indexedDB.open("cedae_pwa_db", 3);
 
     request.onupgradeneeded = (event) => {
       const db = event.target.result;
+      
+      // Criação/Atualização das tabelas de forma atômica
+      const stores = [
+        { name: "respostas", key: "key" },
+        { name: "fotos", key: "fotoId" }
+      ];
 
-      if (!db.objectStoreNames.contains("respostas")) {
-        const store = db.createObjectStore("respostas", { keyPath: "key" });
-        store.createIndex("tipo", "tipo", { unique: false });
-        store.createIndex("idPergunta", "idPergunta", { unique: false });
-      }
-
-      if (!db.objectStoreNames.contains("fotos")) {
-        const store = db.createObjectStore("fotos", { keyPath: "fotoId" });
-        store.createIndex("tipo", "tipo", { unique: false });
-        store.createIndex("idPergunta", "idPergunta", { unique: false });
-      }
+      stores.forEach(s => {
+        if (!db.objectStoreNames.contains(s.name)) {
+          const store = db.createObjectStore(s.name, { keyPath: s.key });
+          store.createIndex("tipo", "tipo", { unique: false });
+          store.createIndex("idPergunta", "idPergunta", { unique: false });
+        }
+      });
     };
 
     request.onsuccess = () => resolve(request.result);
-    request.onerror = () => reject(request.error);
+    request.onerror = () => {
+      dbPromise = null; // Reseta se falhar para tentar de novo
+      reject(request.error);
+    };
   });
 
   return dbPromise;
 }
 
-// -----------------------------------------------------
-// CHAMADO PELO app.js (pode ser NO-OP além de abrir DB)
-// -----------------------------------------------------
+// Inicializador usado pelo app.js
 async function initIndexedDB(tipo) {
-  await openDB();
+  try {
+    const db = await openDB();
+    // Pré-carrega as respostas existentes para o estado do App
+    const respostas = await getAnswersMapFromDB(tipo);
+    Object.assign(APP_STATE.respostas, respostas);
+    console.log(`DB: Dados carregados para o roteiro ${tipo}`);
+  } catch (err) {
+    console.error("Erro ao iniciar DB:", err);
+  }
 }
 
-// -----------------------------------------------------
-// SALVAR RESPOSTA (autosave)
-// -----------------------------------------------------
+// Otimização: Função genérica para transações de escrita
+async function performWrite(storeName, data) {
+  const db = await openDB();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(storeName, "readwrite");
+    tx.objectStore(storeName).put(data);
+    tx.oncomplete = () => resolve(true);
+    tx.onerror = () => reject(tx.error);
+  });
+}
+
 async function saveAnswerToDB(idPergunta, valor) {
   const tipo = APP_STATE.tipoRoteiro;
-  const key = `${tipo}_${idPergunta}`;
-
-  const db = await openDB();
-  return new Promise((resolve, reject) => {
-    const tx = db.transaction("respostas", "readwrite");
-    const store = tx.objectStore("respostas");
-
-    store.put({
-      key,
-      tipo,
-      idPergunta,
-      valor
-    });
-
-    tx.oncomplete = () => resolve(true);
-    tx.onerror = () => reject(tx.error);
+  return performWrite("respostas", {
+    key: `${tipo}_${idPergunta}`,
+    tipo,
+    idPergunta,
+    valor
   });
 }
 
-// -----------------------------------------------------
-// SALVAR FOTO
-// -----------------------------------------------------
 async function savePhotoToDB(fotoId, blob, idPergunta) {
-  const tipo = APP_STATE.tipoRoteiro;
-
-  const db = await openDB();
-  return new Promise((resolve, reject) => {
-    const tx = db.transaction("fotos", "readwrite");
-    const store = tx.objectStore("fotos");
-
-    store.put({
-      fotoId,
-      tipo,
-      idPergunta,
-      blob
-    });
-
-    tx.oncomplete = () => resolve(true);
-    tx.onerror = () => reject(tx.error);
+  return performWrite("fotos", {
+    fotoId,
+    tipo: APP_STATE.tipoRoteiro,
+    idPergunta,
+    blob
   });
 }
 
-// -----------------------------------------------------
-// BUSCAR TODAS AS FOTOS *DO TIPO ATUAL*
-// -----------------------------------------------------
+// Busca rápida usando o índice "tipo"
 async function getAllPhotosFromDB() {
-  const tipo = APP_STATE.tipoRoteiro;
   const db = await openDB();
-
   return new Promise((resolve, reject) => {
     const tx = db.transaction("fotos", "readonly");
-    const store = tx.objectStore("fotos");
-    const index = store.index("tipo");
-    const req = index.getAll(IDBKeyRange.only(tipo));
-
+    const req = tx.objectStore("fotos").index("tipo").getAll(APP_STATE.tipoRoteiro);
     req.onsuccess = () => resolve(req.result || []);
     req.onerror = () => reject(req.error);
   });
 }
 
-// -----------------------------------------------------
-// APAGAR SOMENTE 1 FORMULÁRIO (Geral / PGE / AA)
-// -----------------------------------------------------
-async function clearFormData(tipo) {
-  const db = await openDB();
-
-  return new Promise((resolve, reject) => {
-    const tx = db.transaction(["respostas", "fotos"], "readwrite");
-
-    const respostasIndex = tx.objectStore("respostas").index("tipo");
-    const fotosIndex = tx.objectStore("fotos").index("tipo");
-
-    respostasIndex.openCursor(IDBKeyRange.only(tipo)).onsuccess = (e) => {
-      const cursor = e.target.result;
-      if (cursor) {
-        cursor.delete();
-        cursor.continue();
-      }
-    };
-
-    fotosIndex.openCursor(IDBKeyRange.only(tipo)).onsuccess = (e) => {
-      const cursor = e.target.result;
-      if (cursor) {
-        cursor.delete();
-        cursor.continue();
-      }
-    };
-
-    tx.oncomplete = () => resolve(true);
-    tx.onerror = () => reject(tx.error);
-  });
-}
-
-// -----------------------------------------------------
-// APAGAR TUDO (Finalizar visita geral)
-// -----------------------------------------------------
-async function clearAllData() {
-  const db = await openDB();
-
-  return new Promise((resolve, reject) => {
-    const tx = db.transaction(["respostas", "fotos"], "readwrite");
-    tx.objectStore("respostas").clear();
-    tx.objectStore("fotos").clear();
-
-    tx.oncomplete = () => resolve(true);
-    tx.onerror = () => reject(tx.error);
-  });
-}
-
-// -----------------------------------------------------
-// BUSCAR TODAS AS RESPOSTAS E FOTOS (para XLSX Único)
-// -----------------------------------------------------
+// Busca unificada mais eficiente (Executa em paralelo)
 async function getAllAnswersAndPhotos() {
   const db = await openDB();
-
   const result = {
     geral: { respostas: {}, fotos: {} },
     pge: { respostas: {}, fotos: {} },
     aa: { respostas: {}, fotos: {} }
   };
 
-  await new Promise((resolve, reject) => {
-    const tx = db.transaction("respostas", "readonly");
-    const store = tx.objectStore("respostas");
-    const req = store.getAll();
+  const [respostas, fotos] = await Promise.all([
+    new Promise(r => db.transaction("respostas").objectStore("respostas").getAll().onsuccess = e => r(e.target.result)),
+    new Promise(r => db.transaction("fotos").objectStore("fotos").getAll().onsuccess = e => r(e.target.result))
+  ]);
 
-    req.onsuccess = () => {
-      (req.result || []).forEach((r) => {
-        if (!result[r.tipo]) return;
-        result[r.tipo].respostas[r.idPergunta] = r.valor;
-      });
-      resolve();
-    };
-    req.onerror = () => reject(req.error);
+  respostas?.forEach(r => {
+    if (result[r.tipo]) result[r.tipo].respostas[r.idPergunta] = r.valor;
   });
 
-  await new Promise((resolve, reject) => {
-    const tx = db.transaction("fotos", "readonly");
-    const store = tx.objectStore("fotos");
-    const req = store.getAll();
-
-    req.onsuccess = () => {
-      (req.result || []).forEach((f) => {
-        if (!result[f.tipo]) return;
-        if (!result[f.tipo].fotos[f.idPergunta]) {
-          result[f.tipo].fotos[f.idPergunta] = [];
-        }
-        result[f.tipo].fotos[f.idPergunta].push(f);
-      });
-      resolve();
-    };
-    req.onerror = () => reject(req.error);
+  fotos?.forEach(f => {
+    if (result[f.tipo]) {
+      if (!result[f.tipo].fotos[f.idPergunta]) result[f.tipo].fotos[f.idPergunta] = [];
+      result[f.tipo].fotos[f.idPergunta].push(f);
+    }
   });
 
   return result;
 }
 
-// -----------------------------------------------------
-// BUSCAR SOMENTE RESPOSTAS DE UM TIPO (se quiser CSV por tipo)
-// -----------------------------------------------------
+// Limpeza com Cursor (mais seguro para grandes volumes de dados)
+async function clearFormData(tipo) {
+  const db = await openDB();
+  const tx = db.transaction(["respostas", "fotos"], "readwrite");
+  
+  ["respostas", "fotos"].forEach(store => {
+    const index = tx.objectStore(store).index("tipo");
+    index.openKeyCursor(IDBKeyRange.only(tipo)).onsuccess = (e) => {
+      const cursor = e.target.result;
+      if (cursor) {
+        tx.objectStore(store).delete(cursor.primaryKey);
+        cursor.continue();
+      }
+    };
+  });
+
+  return new Promise((res) => tx.oncomplete = () => res(true));
+}
+
 async function getAnswersMapFromDB(tipo) {
   const db = await openDB();
-
-  return new Promise((resolve, reject) => {
+  return new Promise((resolve) => {
     const respostas = {};
-
-    const tx = db.transaction("respostas", "readonly");
-    const store = tx.objectStore("respostas").index("tipo");
-
-    const req = store.getAll(IDBKeyRange.only(tipo));
+    const req = db.transaction("respostas").objectStore("respostas").index("tipo").getAll(tipo);
     req.onsuccess = () => {
-      (req.result || []).forEach((r) => {
-        respostas[r.idPergunta] = r.valor;
-      });
+      req.result.forEach(r => respostas[r.idPergunta] = r.valor);
       resolve(respostas);
     };
-    req.onerror = () => reject(req.error);
   });
+}
+
+async function clearAllData() {
+  const db = await openDB();
+  const tx = db.transaction(["respostas", "fotos"], "readwrite");
+  tx.objectStore("respostas").clear();
+  tx.objectStore("fotos").clear();
+  return new Promise(res => tx.oncomplete = () => res(true));
 }
