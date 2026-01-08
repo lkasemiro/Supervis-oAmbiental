@@ -76,24 +76,46 @@ function initCadastro() {
 
 // --- ROTEIROS E FORMULÁRIO ---
 async function selectRoteiro(tipo) {
-  APP_STATE.tipoRoteiro = tipo;
-  // Busca roteiros no objeto global preenchido pelo index.html
-  APP_STATE.roteiro = window.ROTEIROS[tipo]; 
-  
-  await initIndexedDB(tipo);
-  
-  const labels = { pge: "PGE", geral: "Geral", aa: "Acidentes Ambientais" };
-  document.getElementById("roteiro-atual-label").textContent = labels[tipo];
+  try {
+    APP_STATE.tipoRoteiro = tipo;
+    
+    // IMPORTANTE: O nome deve ser exatamente o que você definiu no window no index.html
+    const dadosRoteiro = window.ROTEIROS_DATA ? window.ROTEIROS_DATA[tipo] : null;
+    
+    if (!dadosRoteiro) {
+        console.error("Erro: Roteiro não encontrado no objeto window.");
+        alert("Erro ao carregar roteiro. Verifique o console.");
+        return;
+    }
 
-  // Mostra/Esconde seções específicas de PGE
-  const isPGE = tipo === "pge";
-  document.getElementById("local_pge_box")?.classList.toggle("hidden", !isPGE);
-  document.getElementById("sublocal_box")?.classList.toggle("hidden", !isPGE);
+    APP_STATE.roteiro = dadosRoteiro; 
+    
+    // Inicializa o banco e carrega respostas anteriores
+    await initIndexedDB(tipo);
+    
+    const labels = { pge: "PGE", geral: "Geral", aa: "Acidentes Ambientais" };
+    const labelEl = document.getElementById("roteiro-atual-label");
+    if (labelEl) labelEl.textContent = labels[tipo];
 
-  if (isPGE) montarLocaisPGE();
-  montarSecoes();
-  renderFormulario();
-  showScreen("screen-formulario");
+    // Lógica de interface para PGE
+    const isPGE = tipo === "pge";
+    const localBox = document.getElementById("local_pge_box");
+    const sublocalBox = document.getElementById("sublocal_box");
+    
+    if (localBox) localBox.classList.toggle("hidden", !isPGE);
+    if (sublocalBox) sublocalBox.classList.toggle("hidden", !isPGE);
+
+    if (isPGE) {
+        if (typeof montarLocaisPGE === "function") montarLocaisPGE();
+    }
+
+    // Renderização
+    if (typeof montarSecoes === "function") montarSecoes();
+    renderFormulario();
+    showScreen("screen-formulario");
+  } catch (err) {
+    console.error("Erro crítico em selectRoteiro:", err);
+  }
 }
 
 function renderFormulario(secaoFiltrada = null) {
