@@ -37,13 +37,16 @@
   import { ROTEIRO_GERAL } from './roteiros/roteiro_geral.js';
   import { ROTEIRO_PGE } from './roteiros/roteiro_pge.js';
   import { ROTEIRO_AA } from './roteiros/roteiro_aa.js';
-  
-  // Disponibiliza os roteiros globalmente para o seu app.js antigo
+
+  // Disponibiliza globalmente para o app.js
   window.ROTEIROS = {
     geral: ROTEIRO_GERAL,
     pge: ROTEIRO_PGE,
     aa: ROTEIRO_AA
   };
+
+  // Inicia o app apenas após carregar os roteiros
+  if (window.initApp) window.initApp();
 </script>
 
 <script src="indexedDB.js"></script>
