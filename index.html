@@ -3,11 +3,13 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-
   <title>Supervisão Ambiental – PWA</title>
 
+  <meta name="theme-color" content="#0C3C78">
+  <meta name="mobile-web-app-capable" content="yes">
+  
   <link rel="manifest" href="manifest.json">
-  <link rel="apple-touch-icon" href="icon-192.png">
+  <link rel="apple-touch-icon" href="icon.png">
 
   <script src="https://cdn.tailwindcss.com"></script>
   <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
@@ -16,35 +18,44 @@
 
 <body>
 
-<div id="message-box" class="hidden"></div>
+<div id="message-box" class="fixed top-0 left-1/2 transform -translate-x-1/2 mt-4 p-3 text-white rounded-lg shadow-lg hidden z-50"></div>
 
-<!-- TELAS -->
-<section id="screen-cadastro"></section>
+<section id="screen-cadastro">
+    </section>
 <section id="screen-select-roteiro" class="hidden"></section>
 <section id="screen-formulario" class="hidden"></section>
 <section id="screen-final" class="hidden"></section>
 
-<!-- MODAL CÂMERA -->
 <div id="camera-modal" class="hidden"></div>
 
-<!-- LIBS -->
 <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/exceljs@4.4.0/dist/exceljs.min.js"></script>
 
-<!-- ROTEIROS -->
-<script src="roteiros/roteiro_geral.js"></script>
-<script src="roteiros/roteiro_pge.js"></script>
-<script src="roteiros/roteiro_aa.js"></script>
+<script type="module">
+  import { ROTEIRO_GERAL } from './roteiros/roteiro_geral.js';
+  import { ROTEIRO_PGE } from './roteiros/roteiro_pge.js';
+  import { ROTEIRO_AA } from './roteiros/roteiro_aa.js';
+  
+  // Disponibiliza os roteiros globalmente para o seu app.js antigo
+  window.ROTEIROS = {
+    geral: ROTEIRO_GERAL,
+    pge: ROTEIRO_PGE,
+    aa: ROTEIRO_AA
+  };
+</script>
 
-<!-- APP -->
 <script src="indexedDB.js"></script>
 <script src="app.js"></script>
 
 <script>
 if ("serviceWorker" in navigator) {
-  navigator.serviceWorker.register("service-worker.js");
+  window.addEventListener("load", () => {
+    navigator.serviceWorker.register("service-worker.js")
+      .then(reg => console.log("SW Modular registrado"))
+      .catch(err => console.log("Erro SW:", err));
+  });
 }
 </script>
 
