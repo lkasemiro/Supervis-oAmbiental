@@ -7,6 +7,7 @@
 
   <meta name="theme-color" content="#0C3C78">
   <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   
   <link rel="manifest" href="manifest.json">
   <link rel="apple-touch-icon" href="icon.png">
@@ -16,17 +17,16 @@
   <link rel="stylesheet" href="style.css" />
 </head>
 
-<body>
+<body class="bg-gray-50 text-gray-900">
 
 <div id="message-box" class="fixed top-0 left-1/2 transform -translate-x-1/2 mt-4 p-3 text-white rounded-lg shadow-lg hidden z-50"></div>
 
-<section id="screen-cadastro">
-    </section>
-<section id="screen-select-roteiro" class="hidden"></section>
-<section id="screen-formulario" class="hidden"></section>
-<section id="screen-final" class="hidden"></section>
+<section id="screen-cadastro" class="min-h-screen"></section>
+<section id="screen-select-roteiro" class="hidden min-h-screen"></section>
+<section id="screen-formulario" class="hidden min-h-screen"></section>
+<section id="screen-final" class="hidden min-h-screen"></section>
 
-<div id="camera-modal" class="hidden"></div>
+<div id="camera-modal" class="fixed inset-0 bg-black z-[100] hidden flex flex-col"></div>
 
 <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
@@ -36,30 +36,31 @@
 <script src="indexedDB.js"></script>
 
 <script type="module">
-    // Importa os roteiros gerados pelo R
     import { ROTEIRO_GERAL } from './roteiro_geral.js';
     import { ROTEIRO_PGE } from './roteiro_pge.js';
     import { ROTEIRO_AA } from './roteiro_aa.js';
 
-    // Disponibiliza globalmente para que o app.js (não-módulo) consiga ler
+    // Globaliza os dados para o app.js
     window.ROTEIROS_DATA = {
         geral: ROTEIRO_GERAL,
         pge: ROTEIRO_PGE,
         aa: ROTEIRO_AA
     };
 
-    // Garante que o app.js só execute após os dados estarem prontos
-    import('./app.js').then(() => {
-        console.log("App inicializado com roteiros carregados.");
-    });
+    // Carrega o script principal como módulo para evitar erros de escopo
+    import('./app.js')
+        .then(() => console.log("App.js carregado com sucesso."))
+        .catch(err => console.error("Erro ao carregar app.js:", err));
 </script>
-if ("serviceWorker" in navigator) {
-  window.addEventListener("load", () => {
-    navigator.serviceWorker.register("service-worker.js")
-      .then(reg => console.log("SW Modular registrado"))
-      .catch(err => console.log("Erro SW:", err));
-  });
-}
+
+<script>
+    if ("serviceWorker" in navigator) {
+        window.addEventListener("load", () => {
+            navigator.serviceWorker.register("service-worker.js")
+                .then(reg => console.log("Service Worker registrado com sucesso:", reg.scope))
+                .catch(err => console.error("Falha ao registrar Service Worker:", err));
+        });
+    }
 </script>
 
 </body>
