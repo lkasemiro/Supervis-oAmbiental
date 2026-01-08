@@ -1,10 +1,11 @@
 // =============================================
-// SERVICE WORKER – PWA CEDAE (Versão Modular Corrigida)
+// SERVICE WORKER – PWA CEDAE (V13 MAPA OFFLINE)
 // =============================================
 
-const CACHE_NAME = "cedae-pwa-v12-modular"; 
+const CACHE_NAME = "cedae-pwa-v13";
+const TILE_CACHE = "cedae-osm-tiles-v1";
 
-// Lista de arquivos atualizada (Removido diretório /roteiros/ conforme index.html)
+// APP SHELL – arquivos essenciais
 const APP_SHELL = [
   "./",
   "./index.html",
@@ -12,79 +13,109 @@ const APP_SHELL = [
   "./indexedDB.js",
   "./manifest.json",
   "./style.css",
-  "./icon.png", 
-  "./roteiros/roteiro_geral.js", // Caminho corrigido
-  "./roteiros/roteiro_pge.js",   // Caminho corrigido
-  "./roteiros/roteiro_aa.js"     // Caminho corrigido
+  "./icon.png",
+  "./roteiros/roteiro_geral.js",
+  "./roteiros/roteiro_pge.js",
+  "./roteiros/roteiro_aa.js",
+
+  // Leaflet (necessário offline)
+  "https://unpkg.com/leaflet/dist/leaflet.css",
+  "https://unpkg.com/leaflet/dist/leaflet.js"
 ];
 
-// INSTALL – Cache agressivo
+// ---------------------------------------------
+// INSTALL
+// ---------------------------------------------
 self.addEventListener("install", (event) => {
-  console.log("SW: Instalando nova versão modular...");
+  console.log("SW: Instalando PWA CEDAE V13...");
   event.waitUntil(
-    caches.open(CACHE_NAME).then((cache) => {
-      // addAll falha se qualquer URL retornar 404
-      return cache.addAll(APP_SHELL);
-    })
+    caches.open(CACHE_NAME).then((cache) => cache.addAll(APP_SHELL))
   );
   self.skipWaiting();
 });
 
-// ACTIVATE – Limpeza de versões anteriores
+// ---------------------------------------------
+// ACTIVATE
+// ---------------------------------------------
 self.addEventListener("activate", (event) => {
-  console.log("SW: Versão modular ativa.");
+  console.log("SW: Ativando nova versão...");
   event.waitUntil(
     caches.keys().then((keys) =>
       Promise.all(
-        keys.filter((key) => key !== CACHE_NAME)
-            .map((key) => caches.delete(key))
+        keys
+          .filter((key) => ![CACHE_NAME, TILE_CACHE].includes(key))
+          .map((key) => caches.delete(key))
       )
     )
   );
   self.clients.claim();
 });
 
-// FETCH – Estratégia "Cache First" com correção de Clone
+// ---------------------------------------------
+// FETCH
+// ---------------------------------------------
 self.addEventListener("fetch", (event) => {
   const request = event.request;
+  const url = request.url;
 
-  if (!request.url.startsWith('http')) return;
+  if (!url.startsWith("http")) return;
 
+  // -----------------------------------------
+  // MAPA OFFLINE – OpenStreetMap Tiles
+  // -----------------------------------------
+  if (url.includes("tile.openstreetmap.org")) {
+    event.respondWith(
+      fetch(request)
+        .then((networkRes) => {
+          const clone = networkRes.clone();
+          caches.open(TILE_CACHE).then((cache) => cache.put(request, clone));
+          return networkRes;
+        })
+        .catch(() =>
+          caches.open(TILE_CACHE).then((cache) => cache.match(request))
+        )
+    );
+    return;
+  }
+
+  // -----------------------------------------
+  // APP SHELL – Cache First
+  // -----------------------------------------
   event.respondWith(
     caches.match(request).then((cacheRes) => {
-      // 1. Entrega do cache se disponível
       if (cacheRes) return cacheRes;
 
-      // 2. Busca na rede e correção do erro "Response body is already used"
       return fetch(request)
         .then((networkRes) => {
-          // Validação básica
-          if (!networkRes || networkRes.status !== 200 || networkRes.type !== 'basic') {
+          if (
+            !networkRes ||
+            networkRes.status !== 200 ||
+            networkRes.type !== "basic"
+          ) {
             return networkRes;
           }
 
-          // CORREÇÃO: Clonar a resposta ANTES de consumi-la no cache.put
-          const responseToCache = networkRes.clone(); 
-
+          const responseToCache = networkRes.clone();
           caches.open(CACHE_NAME).then((cache) => {
             cache.put(request, responseToCache);
           });
 
           return networkRes;
         })
-        .catch((err) => {
-          if (request.mode === 'navigate') {
+        .catch(() => {
+          if (request.mode === "navigate") {
             return caches.match("./index.html");
           }
-          console.warn("SW: Recurso não disponível offline:", request.url);
         });
     })
   );
 });
 
-// Listener para atualização via interface
+// ---------------------------------------------
+// ATUALIZAÇÃO MANUAL
+// ---------------------------------------------
 self.addEventListener("message", (event) => {
-  if (event.data && event.data.type === "SKIP_WAITING") {
+  if (event.data?.type === "SKIP_WAITING") {
     self.skipWaiting();
   }
 });
