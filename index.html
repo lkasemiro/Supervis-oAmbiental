@@ -1,69 +1,164 @@
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Supervisão Ambiental – PWA</title>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+    <title>Supervisão Ambiental – CEDAE</title>
 
-  <meta name="theme-color" content="#0C3C78">
-  <meta name="mobile-web-app-capable" content="yes">
-  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-  
-  <link rel="manifest" href="manifest.json">
-  <link rel="apple-touch-icon" href="icon.png">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <link rel="apple-touch-icon" href="icon.png">
+    <link rel="icon" type="image/png" href="icon.png">
+    <link rel="manifest" href="manifest.json">
 
-  <script src="https://cdn.tailwindcss.com"></script>
-  <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
-  <link rel="stylesheet" href="style.css" />
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.sheetjs.com/xlsx-0.20.0/package/dist/xlsx.full.min.js"></script>
+
+    <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
+    <style>
+        .animate-in { animation: fadeIn 0.3s ease-out; }
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+    </style>
 </head>
 
-<body class="bg-gray-50 text-gray-900">
+<body class="bg-gray-50 text-gray-900 font-sans antialiased">
 
-<div id="message-box" class="fixed top-0 left-1/2 transform -translate-x-1/2 mt-4 p-3 text-white rounded-lg shadow-lg hidden z-50"></div>
+<!-- ===================================================== -->
+<!-- SCREEN: CADASTRO -->
+<!-- ===================================================== -->
+<section id="screen-cadastro" class="max-w-2xl mx-auto p-4 min-h-screen flex flex-col justify-center">
+    <div class="text-center mb-8">
+        <img src="icon.png" class="h-24 mx-auto mb-4">
+        <h1 class="text-2xl font-black text-blue-900">VISTORIA TÉCNICA</h1>
+        <p class="text-gray-500 uppercase tracking-widest text-xs">Supervisão Ambiental</p>
+    </div>
 
-<section id="screen-cadastro" class="min-h-screen"></section>
-<section id="screen-select-roteiro" class="hidden min-h-screen"></section>
-<section id="screen-formulario" class="hidden min-h-screen"></section>
-<section id="screen-final" class="hidden min-h-screen"></section>
+    <div class="bg-white p-8 rounded-[2rem] shadow-xl">
+        <div class="space-y-5">
 
-<div id="camera-modal" class="fixed inset-0 bg-black z-[100] hidden flex flex-col"></div>
+            <div>
+                <label class="block text-xs font-bold text-gray-400 uppercase mb-1">Avaliador</label>
+                <input id="avaliador" type="text" class="w-full p-4 bg-gray-50 rounded-2xl">
+            </div>
 
-<script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/exceljs@4.4.0/dist/exceljs.min.js"></script>
+            <div>
+                <label class="block text-xs font-bold text-gray-400 uppercase mb-1 ml-1">Local da visita</label>
+                    <select id="local" class="w-full p-4 bg-gray-50 border-none rounded-2xl focus:ring-2 focus:ring-blue-500 appearance-none"></select>
+            </div>
 
+            <div>
+                <label class="block text-xs font-bold text-gray-400 uppercase mb-1">Data</label>
+                <input id="data_visita" type="date" class="w-full p-4 bg-gray-50 rounded-2xl">
+            </div>
+
+            <div>
+                <label class="block text-xs font-bold text-gray-400 uppercase mb-1">Colaborador Gla</label>
+                <input id="colaborador" type="text" class="w-full p-4 bg-gray-50 rounded-2xl">
+            </div>
+
+            <button id="btn-cadastro-continuar"
+                class="w-full bg-blue-700 text-white py-5 rounded-2xl font-black">
+                INICIAR VISTORIA
+            </button>
+
+        </div>
+    </div>
+</section>
+
+
+<!-- ===================================================== -->
+<!-- SCREEN: SELEÇÃO DE ROTEIRO -->
+<!-- ===================================================== -->
+<section id="screen-select-roteiro" class="max-w-xl mx-auto p-6 hidden min-h-screen flex flex-col justify-center">
+    <h2 class="text-2xl font-black text-center mb-8">Selecione o formulário</h2>
+
+    <div class="grid gap-4">
+        <button onclick="selectRoteiro('geral')" class="p-6 bg-white rounded-3xl shadow">
+            FORMULÁRIO GERAL
+        </button>
+
+        <button onclick="selectRoteiro('pge')" class="p-6 bg-white rounded-3xl shadow">
+            PGE – Gerenciamento de Efluentes
+        </button>
+
+        <button onclick="selectRoteiro('aa')" class="p-6 bg-white rounded-3xl shadow">
+            Acidentes Ambientais
+        </button>
+    </div>
+</section>
+
+
+<!-- ===================================================== -->
+<!-- SCREEN: FORMULÁRIO -->
+<!-- ===================================================== -->
+<section id="screen-formulario" class="max-w-3xl mx-auto p-4 hidden pb-32">
+
+    <div class="sticky top-0 bg-gray-50 z-40 border-b mb-4">
+        <div class="flex justify-between items-center mb-3">
+            <button onclick="showScreen('screen-select-roteiro')" class="text-blue-600 text-sm">
+                ← Voltar
+            </button>
+            <span id="roteiro-atual-label" class="text-xs font-black text-gray-400">ROTEIRO</span>
+            <div></div>
+        </div>
+
+        <div id="sublocal_box" class="hidden mb-3">
+            <label class="block text-xs font-bold text-gray-400 mb-1">Sublocal</label>
+            <select id="sublocal_select" class="w-full p-3 border rounded-xl"></select>
+        </div>
+
+        <div id="secao_box" class="mb-3">
+            <label class="block text-xs font-bold text-gray-400 mb-1">Seção</label>
+            <select id="secao_select" class="w-full p-3 border rounded-xl"></select>
+        </div>
+    </div>
+
+    <div id="conteudo_formulario" class="space-y-4 animate-in"></div>
+
+    <div class="fixed bottom-0 left-0 right-0 p-4 bg-white border-t">
+        <button onclick="showScreen('screen-final')"
+            class="w-full bg-green-600 text-white py-4 rounded-2xl font-bold">
+            FINALIZAR
+        </button>
+    </div>
+</section>
+
+
+<!-- ===================================================== -->
+<!-- SCREEN: FINAL -->
+<!-- ===================================================== -->
+<section id="screen-final" class="max-w-xl mx-auto p-8 hidden min-h-screen flex flex-col justify-center text-center">
+    <div class="bg-white p-8 rounded-[3rem] shadow-xl">
+
+        <h2 class="text-2xl font-black mb-2">Vistoria Concluída</h2>
+        <p class="text-gray-500 mb-8">Baixe o formulário consolidado.</p>
+
+        <div class="space-y-3">
+            <button onclick="baixarExcelConsolidado()"
+                class="w-full bg-green-600 text-white py-4 rounded-2xl font-bold">
+                BAIXAR XLSX
+            </button>
+
+            <button onclick="confirmarNovaVistoria()"
+                class="w-full bg-gray-200 text-gray-600 py-4 rounded-2xl font-bold">
+                NOVA VISTORIA
+            </button>
+        </div>
+    </div>
+</section>
+
+<!-- ===================================================== -->
+<!-- SCRIPTS -->
+<!-- ===================================================== -->
+<script src="roteiros.js"></script>
 <script src="indexedDB.js"></script>
+<script src="app.js"></script>
 
-<<script type="module">
-    // Ajuste dos caminhos para a pasta 'roteiros'
-    import { ROTEIRO_GERAL } from './roteiros/roteiro_geral.js';
-    import { ROTEIRO_PGE } from './roteiros/roteiro_pge.js';
-    import { ROTEIRO_AA } from './roteiros/roteiro_aa.js';
-
-    window.ROTEIROS_DATA = {
-        geral: ROTEIRO_GERAL,
-        pge: ROTEIRO_PGE,
-        aa: ROTEIRO_AA
-    };
-
-    // Importa o app.js como módulo para aceitar os 'exports' dos roteiros
-    import('./app.js').then(module => {
-        // Vincula funções necessárias ao window para uso em atributos onclick de HTML
-        window.abrirCamera = module.abrirCamera; 
-        console.log("App.js e roteiros carregados com sucesso.");
-    });
-</script>
-
-<script>
-    if ("serviceWorker" in navigator) {
-        window.addEventListener("load", () => {
-            navigator.serviceWorker.register("service-worker.js")
-                .then(reg => console.log("Service Worker registrado com sucesso:", reg.scope))
-                .catch(err => console.error("Falha ao registrar Service Worker:", err));
-        });
-    }
-</script>
 
 </body>
 </html>

@@ -1,81 +1,56 @@
 /* ============================================================
-   STYLE.CSS – Estilos complementares do PWA de Supervisão Ambiental
+   STYLE.CSS – Estilos Blindados (CEDAE SIGAD)
    ============================================================ */
 
-/* Ajuste para o body */
+:root {
+    --cedae-blue: #0C3C78;
+    --background: #f0f2f5;
+}
+
+/* Base do App */
 body {
-  background-color: #ffffff;
-  -webkit-tap-highlight-color: transparent;
-  font-family: Arial, sans-serif;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    background-color: var(--background);
+    -webkit-tap-highlight-color: transparent;
 }
 
-/* Ajuste fino para contêineres */
-.section-card {
-  border-radius: 16px;
-}
-
-/* Botões padrão */
-button.btn {
-  transition: 0.15s ease;
-}
-
-button.btn:hover {
-  transform: translateY(-2px);
-}
-
-/* Input padrão */
-input[type="text"],
-input[type="number"],
-textarea,
+/* Ajuste específico para o seletor de Locais */
 select {
-  outline: none;
+    appearance: none !important; /* Remove estilo padrão do sistema */
+    -webkit-appearance: none;
+    background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%236b7280' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M6 8l4 4 4-4'/%3e%3c/svg%3e") !important;
+    background-position: right 1rem center !important;
+    background-repeat: no-repeat !important;
+    background-size: 1.5em 1.5em !important;
+    padding-right: 2.5rem !important;
 }
 
-/* Borda padrão quando Tailwind não estiver disponível offline */
-input,
-textarea,
-select {
-  border: 1px solid #ccc;
-  border-radius: 6px;
+/* Inputs focados */
+input:focus, select:focus {
+    outline: none;
+    box-shadow: 0 0 0 2px rgba(12, 60, 120, 0.2);
+    border-color: var(--cedae-blue);
 }
 
-/* Cartão de imagem de apoio */
-img.support-img {
-  max-height: 240px;
-  border-radius: 12px;
-  border: 1px solid #ddd;
+/* Animação de entrada das telas */
+.animate-in {
+    animation: fadeIn 0.3s ease-out;
 }
 
-/* Layout para listagem de fotos (lista textual) */
-.foto-lista-item {
-  padding: 4px 8px;
-  background: #f8f8f8;
-  border-radius: 6px;
-  border: 1px solid #ddd;
-  font-size: 12px;
+@keyframes fadeIn {
+    from { opacity: 0; transform: translateY(10px); }
+    to { opacity: 1; transform: translateY(0); }
 }
 
-/* Modal da câmera */
-#camera-modal {
-  backdrop-filter: blur(2px);
-}
+/* Utilitários */
+.hidden { display: none !important; }
 
-#camera-placeholder {
-  color: #666;
-  font-size: 14px;
-}
-
-/* Mensagem superior */
-#message-box {
-  transition: opacity 0.4s ease-in-out;
-}
-
-/* Seções escondidas por lógica condicional */
-.hidden-by-condition {
-  display: none !important;
-}
-
-/* FOTOS NO TOPO (PGE – Sublocal) */
-#fotos_sublocal_topo img {
-  max-height: 80px;
+/* Estilo para as fotos capturadas (Grade) */
+.foto-preview {
+    width: 100%;
+    aspect-ratio: 1/1;
+    object-fit: cover;
+    border-radius: 8px;
+    border: 2px solid white;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
 }
