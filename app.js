@@ -768,7 +768,8 @@ async function sincronizarComBanco() {
 
         // 3. Chamada para a sua API Plumber em R
         // Se estiver testando localmente, use http://localhost:8000/vistorias/sincronizar
-        const response = await fetch('http://127.0.0.1:8000/vistorias/sincronizar', {
+        
+        const response = await fetch('https://strapless-christi-unspread.ngrok-free.dev/vistorias/sincronizar', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(dadosParaEnviar)
@@ -811,7 +812,7 @@ async function sincronizarVisitasPendentes() {
         if (visita.sincronizado) continue;
 
         try {
-            const res = await fetch('http://127.0.0.1:8000/vistorias/sincronizar',{
+            const res = await fetch('https://strapless-christi-unspread.ngrok-free.dev/vistorias/sincronizar',{
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(visita)
