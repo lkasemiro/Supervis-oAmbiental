@@ -6,7 +6,7 @@
 // 1. CONSTANTES DO BANCO
 // ------------------------------------------------------------
 const DB_NAME = "CEDAE_VistoriasDB";
-const DB_VERSION = 5;
+const DB_VERSION = 11;
 
 const STORE_RESPOSTAS = "vistorias";
 const STORE_FOTOS = "fotos";
