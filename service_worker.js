@@ -1,6 +1,5 @@
 const CACHE_NAME = 'cedae-vistorias-v1';
 
-// Arquivos necessários para o funcionamento offline (App Shell)
 const ASSETS_TO_CACHE = [
   './',
   './index.html',
@@ -10,57 +9,53 @@ const ASSETS_TO_CACHE = [
   './roteiros.js',
   './manifest.json',
   './icon.png',
-  // CDNs e Recursos Externos (O SW consegue cachear estes também)
   'https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4',
   'https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.4.0/exceljs.min.js',
   'https://unpkg.com/leaflet/dist/leaflet.css'
 ];
 
-// Instalação: Salva os arquivos no cache
+// Instalação
 self.addEventListener('install', (event) => {
   event.waitUntil(
     caches.open(CACHE_NAME).then((cache) => {
-      console.log('SW: Mapeando cache de ativos estáticos');
       return cache.addAll(ASSETS_TO_CACHE);
     })
   );
   self.skipWaiting();
 });
 
-// Ativação: Limpa caches antigos se a versão mudar
+// Ativação e Limpeza
 self.addEventListener('activate', (event) => {
   event.waitUntil(
-    caches.keys().then((cacheNames) => {
-      return Promise.all(
-        cacheNames.map((cache) => {
-          if (cache !== CACHE_NAME) {
-            console.log('SW: Removendo cache antigo:', cache);
-            return caches.delete(cache);
-          }
-        })
-      );
+    caches.keys().then((keys) => {
+      return Promise.all(keys.map((key) => {
+        if (key !== CACHE_NAME) return caches.delete(key);
+      }));
     })
   );
   self.clients.claim();
 });
 
-// Estratégia: Stale-While-Revalidate
-// Serve o que está no cache imediatamente, mas atualiza o cache em background
+// Estratégia: Stale-While-Revalidate (Corrigida)
 self.addEventListener('fetch', (event) => {
+  // Ignora requisições POST (Sincronização com R/Server)
+  if (event.request.method !== 'GET') return;
+
   event.respondWith(
     caches.open(CACHE_NAME).then((cache) => {
-      return cache.match(event.request).then((response) => {
+      return cache.match(event.request).then((cachedResponse) => {
         const fetchPromise = fetch(event.request).then((networkResponse) => {
-          // Atualiza o cache com a nova versão da rede
-          if (networkResponse.status === 200) {
+          // Só coloca no cache se a resposta for válida
+          if (networkResponse && networkResponse.status === 200) {
             cache.put(event.request, networkResponse.clone());
           }
           return networkResponse;
         }).catch(() => {
-          // Se falhar a rede (offline total), o match(event.request) já terá retornado o cache
+          // Se falhar a rede e não houver cache, você pode retornar uma página offline aqui
         });
-        
-        return response || fetchPromise;
+
+        // Retorna o cache IMEDIATAMENTE ou aguarda a rede se o cache estiver vazio
+        return cachedResponse || fetchPromise;
       });
     })
   );
