@@ -78,40 +78,42 @@ function carregarMetaDoLocalStorage() {
 async function initApp() {
     console.log("🚀 Iniciando App...");
     
-    // 1. Carrega Metadados primeiro (rápido)
+    // 1. Carrega o que estiver no LocalStorage (Metadados rápidos)
     carregarMetaDoLocalStorage();
 
-    // 2. Carrega progresso do IndexedDB (completo)
+    // 2. Carrega o progresso pesado do IndexedDB
     if (window.DB_API && window.DB_API.loadVisita) {
         try {
             const dadosSalvos = await DB_API.loadVisita();
             if (dadosSalvos) {
-                // Preserva o roteiro estático, carrega apenas respostas e estado
+                // Sincroniza respostas
                 APP_STATE.respostas = dadosSalvos.respostas || APP_STATE.respostas;
-                APP_STATE.id_visita = dadosSalvos.id_visita || APP_STATE.id_visita;
+                
+                // UNIFICAÇÃO DE CHAVE: Garante que id_vistoria seja a oficial
+                APP_STATE.id_vistoria = dadosSalvos.id_vistoria || dadosSalvos.id_visita || localStorage.getItem("id_vistoria");
             }
         } catch (err) {
-            console.warn("Nenhum dado prévio no IndexedDB encontrado.");
+            console.warn("Sem dados no IndexedDB, iniciando limpo.");
         }
     }
 
-    // 3. Garante ID Único (Segurança de Chave Primária)
+    // 3. SE NÃO EXISTIR ID, CRIA AGORA (Evita o erro de Chave Nula no celular)
     if (!APP_STATE.id_vistoria) {
-    // Buscamos id_vistoria para bater com o banco
-    APP_STATE.id_vistoria = localStorage.getItem("id_vistoria") || `VIST_${Date.now()}`;
-    localStorage.setItem("id_vistoria", APP_STATE.id_vistoria);
+        APP_STATE.id_vistoria = `VIST_${Date.now()}`;
+        localStorage.setItem("id_vistoria", APP_STATE.id_vistoria);
     }
 
-    // 4. Configura Seletor de Locais
+    // 4. Configuração do Seletor (Mantido seu código original)
     const selLocal = document.getElementById("local");
     if (selLocal) {
         selLocal.innerHTML = `<option disabled selected value="">Selecionar Local...</option>` +
             LOCAIS_VISITA.map(l => `<option value="${l}">${l}</option>`).join("");
         
         if (APP_STATE.local) selLocal.value = APP_STATE.local;
+        
         selLocal.onchange = () => {
             APP_STATE.local = selLocal.value;
-            registrarResposta(null, null); // Força um salvamento do estado
+            registrarResposta(null, null); 
         };
     }
 
@@ -123,34 +125,29 @@ async function initApp() {
     }
 }
 function validarEComecar() {
-    // ... validações ...
-    APP_STATE.avaliador = avaliador;
-    APP_STATE.local = local;
-    APP_STATE.data = data;
-    
-    // GARANTIA: Salva explicitamente a chave que o IndexedDB exige
-    localStorage.setItem("id_vistoria", APP_STATE.id_vistoria);
-    
-    registrarResposta(null, null); 
-    showScreen("screen-select-roteiro");
-}
+    const elAval = document.getElementById("avaliador");
+    const elLocal = document.getElementById("local");
+    const elData = document.getElementById("data_visita");
+    const elColab = document.getElementById("colaborador");
 
-    // Salva os dados no APP_STATE
-    APP_STATE.avaliador = avaliador;
-    APP_STATE.local = local;
-    APP_STATE.data = data;
-    APP_STATE.colaborador = document.getElementById("colaborador").value;
+    if (!elAval.value || !elLocal.value || !elData.value) {
+        alert("Preencha Avaliador, Local e Data!");
+        return;
+    }
 
-    // Persiste imediatamente
+    // Atualiza Estado Global
+    APP_STATE.avaliador = elAval.value;
+    APP_STATE.local = elLocal.value;
+    APP_STATE.data = elData.value;
+    APP_STATE.colaborador = elColab ? elColab.value : "";
+
+    // IMPORTANTE: registrarResposta agora usa id_vistoria internamente
     registrarResposta(null, null); 
 
-    // Muda de tela
     showScreen("screen-select-roteiro");
 }
-
-// Garante que a função esteja disponível globalmente
 window.validarEComecar = validarEComecar;
-// ============================================================
+/// ============================================================
 // 4. PERSISTÊNCIA DE RESPOSTAS (REVISADA)
 // ============================================================
 
