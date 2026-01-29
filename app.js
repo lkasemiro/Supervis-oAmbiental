@@ -848,10 +848,12 @@ async function sincronizarVisitasPendentes() {
             });
 
             if (res.ok) {
-                visita.sincronizado = true;
-                await DB_API.saveVisita(visita);
-                console.log("✅ Visita pendente sincronizada automaticamente.");
-            }
+    visita.sincronizado = true;
+    // Atualiza especificamente na tabela de histórico
+    const txUpdate = db.transaction("vistorias", "readwrite");
+    txUpdate.objectStore("vistorias").put(visita);
+    console.log(`✅ Visita ${visita.id_vistoria} sincronizada e marcada.`);
+}
         } catch (e) {
             console.warn("Tentativa de sincronização automática falhou.");
         }
@@ -866,31 +868,46 @@ async function confirmarNovaVistoria() {
 
     try {
         const db = await DB_API.openDB();
-        const tx = db.transaction(["vistorias"], "readwrite");
         
-        // GARANTIA: O id_vistoria DEVE estar na raiz do objeto
+        // Garante que temos um ID antes de começar a transação
+        const idFinal = APP_STATE.id_visita || localStorage.getItem("id_visita") || `VIST_${Date.now()}`;
+        
+        const tx = db.transaction(["vistorias"], "readwrite");
+        const store = tx.objectStore("vistorias");
+        
         const objetoParaSalvar = {
-            id_vistoria: APP_STATE.id_visita || `VIST_${Date.now()}`,
-            avaliador: APP_STATE.avaliador,
-            local: APP_STATE.local,
-            data: APP_STATE.data,
+            id_vistoria: idFinal,
+            avaliador: APP_STATE.avaliador || "Não Informado",
+            local: APP_STATE.local || "Não Informado",
+            data: APP_STATE.data || new Date().toISOString().split('T')[0],
             tipoRoteiro: APP_STATE.tipoRoteiro,
-            dados: JSON.parse(JSON.stringify(APP_STATE)),
+            dados: JSON.parse(JSON.stringify(APP_STATE)), 
             sincronizado: false,
             timestamp: Date.now()
         };
 
-        await tx.objectStore("vistorias").put(objetoParaSalvar);
+        const request = store.put(objetoParaSalvar);
+
+        request.onsuccess = () => {
+            console.log("✅ Vistoria arquivada com sucesso.");
+        };
 
         tx.oncomplete = () => {
+            const avaliadorAntigo = APP_STATE.avaliador;
             localStorage.clear();
-            // Mantém apenas o avaliador para facilitar a próxima
-            localStorage.setItem("avaliador", APP_STATE.avaliador);
+            // Preserva apenas o essencial para a próxima rodada
+            if (avaliadorAntigo) localStorage.setItem("avaliador", avaliadorAntigo);
             location.reload(); 
         };
+
+        tx.onerror = (e) => {
+            console.error("Erro na transação:", e.target.error);
+            alert("Erro no banco: " + e.target.error);
+        };
+
     } catch (err) {
         console.error("Erro ao arquivar:", err);
-        alert("Erro crítico ao salvar no banco local!");
+        alert("Erro crítico ao salvar! Verifique se o ID da visita existe.");
     }
 }
 window.savePhotoToDB = async (fotoId, blob, idPergunta, base64) => {

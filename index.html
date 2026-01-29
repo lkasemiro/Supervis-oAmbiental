@@ -12,12 +12,10 @@
     <link rel="icon" type="image/png" href="icon.png">
     <link rel="manifest" href="manifest.json">
 
-    <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.4.0/exceljs.min.js"></script>
     
     <link rel="stylesheet" href="style.css">
-
 
     <style>
         .animate-in { animation: fadeIn 0.3s ease-out; }
@@ -25,171 +23,172 @@
             from { opacity: 0; transform: translateY(10px); }
             to { opacity: 1; transform: translateY(0); }
         }
+        /* Banner de Conexão Estilizado */
+        #connection-banner {
+            transition: all 0.5s ease;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
     </style>
-
- <script>
-    if ('serviceWorker' in navigator) {
-        navigator.serviceWorker.register('sw.js')
-            .then(() => console.log("✅ Sistema Offline Pronto!"))
-            .catch(err => console.error("❌ Falha no SW:", err));
-    }
-</script>
 </head>
 
-<body class="bg-white p-8 text-gray-900 font-sans antialiased">
-    <div id="status-sinc" style="position: fixed; bottom: 10px; right: 10px; font-size: 12px; background: #eee; padding: 5px; z-index: 1000;">
-  Status: Aguardando...
-</div>
-<!-- ===================================================== -->
-<!-- SCREEN: CADASTRO -->
-<!-- ===================================================== -->
-<section id="screen-cadastro" class="max-w-2xl mx-auto p-4 min-h-screen flex flex-col justify-center">
-    <div class="text-center mb-8">
-        <!-- Largura total (w-full) e altura fixa (h-24), mantendo o aspecto -->
-        <img src="icon.png" class="h-24 w-full object-contain mx-auto mb-4" alt="Logo da CEDAE">
-        <h1 class="text-3x1 font-semibold text-[#0067ac] tracking-wide">Formulário de Visita Técnica</h1>
-        <p class="text-[#0067ac] uppercase tracking-widest text-xs">Supervisão Ambiental</p>
+<body class="bg-white text-gray-900 font-sans antialiased">
+
+    <div id="connection-banner" class="fixed top-0 left-0 right-0 z-[100] text-center py-1 text-[10px] font-bold uppercase tracking-widest bg-gray-500 text-white">
+        <span id="connection-text">Verificando sistema...</span>
     </div>
-    <div class="bg-white p-8 rounded-[2rem] shadow-xl">
-        <div class="space-y-5">
 
-            <div>
-                <label class="block text-xs font-bold text-gray-600 uppercase mb-1">Avaliador</label>
-                <input id="avaliador" type="text" class="w-full p-4 bg-gray-50 rounded-2xl">
-            </div>
+    <div id="status-sinc" class="fixed bottom-2 right-2 text-[10px] bg-white/80 backdrop-blur p-2 rounded-lg border z-50">
+        Status: Inicializando...
+    </div>
 
-            <div>
-                <label class="block text-xs font-bold text-gray-600 uppercase mb-1 ml-1">Local da visita</label>
-                    <select id="local" class="w-full p-4 bg-gray-50 border-none rounded-2xl focus:ring-2 focus:ring-blue-500 appearance-none"></select>
-            </div>
-
-            <div>
-                <label class="block text-xs font-bold text-gray-600 uppercase mb-1">Data</label>
-                <input id="data_visita" type="date" class="w-full p-4 bg-gray-50 rounded-2xl">
-            </div>
-
-            <div>
-                <label class="block text-xs font-bold text-gray-600 uppercase mb-1">Colaborador Gla</label>
-                <input id="colaborador" type="text" class="w-full p-4 bg-gray-50 rounded-2xl">
-            </div>
-
-           <button id="btn-cadastro-continuar"
-                onclick="validarEComecar()"
-                class="w-full bg-[#0067ac] text-white py-5 rounded-2xl font-black">
-                INICIAR VISTORIA
-            </button>
-
+    <section id="screen-cadastro" class="max-w-2xl mx-auto p-4 min-h-screen flex flex-col justify-center pt-8">
+        <div class="text-center mb-8">
+            <img src="icon.png" class="h-24 w-full object-contain mx-auto mb-4" alt="Logo da CEDAE">
+            <h1 class="text-2xl font-semibold text-[#0067ac] tracking-wide">Formulário de Visita Técnica</h1>
+            <p class="text-[#0067ac] uppercase tracking-widest text-xs font-bold">Supervisão Ambiental</p>
         </div>
-    </div>
-</section>
 
-<!-- ===================================================== -->
-<!-- SCREEN: SELEÇÃO DE ROTEIRO -->
-<!-- ===================================================== -->
-<section id="screen-select-roteiro" class="max-w-xl mx-auto p-6 hidden min-h-screen flex flex-col justify-center">
-    <h2 class="text-[#0067ac] uppercase tracking-widest text-2xl text-center">Selecione o formulário</h2>
+        <div class="bg-white p-8 rounded-[2rem] shadow-xl border border-gray-100">
+            <div class="space-y-5">
+                <div>
+                    <label class="block text-xs font-bold text-gray-500 uppercase mb-1 ml-1">Avaliador</label>
+                    <input id="avaliador" type="text" placeholder="Seu nome" class="w-full p-4 bg-gray-50 rounded-2xl border-none focus:ring-2 focus:ring-blue-500">
+                </div>
+
+                <div>
+                    <label class="block text-xs font-bold text-gray-500 uppercase mb-1 ml-1">Local da visita</label>
+                    <select id="local" class="w-full p-4 bg-gray-50 border-none rounded-2xl focus:ring-2 focus:ring-blue-500 appearance-none"></select>
+                </div>
+
+                <div>
+                    <label class="block text-xs font-bold text-gray-500 uppercase mb-1 ml-1">Data</label>
+                    <input id="data_visita" type="date" class="w-full p-4 bg-gray-50 rounded-2xl border-none focus:ring-2 focus:ring-blue-500">
+                </div>
+
+                <div>
+                    <label class="block text-xs font-bold text-gray-500 uppercase mb-1 ml-1">Colaborador Gla</label>
+                    <input id="colaborador" type="text" placeholder="Nome do acompanhante" class="w-full p-4 bg-gray-50 rounded-2xl border-none focus:ring-2 focus:ring-blue-500">
+                </div>
+
+                <button id="btn-cadastro-continuar"
+                    onclick="validarEComecar()"
+                    class="w-full bg-[#0067ac] hover:bg-[#004d81] text-white py-5 rounded-2xl font-black transition-all active:scale-95 shadow-lg">
+                    INICIAR VISTORIA
+                </button>
+            </div>
+        </div>
+    </section>
+
+    <section id="screen-select-roteiro" class="max-w-xl mx-auto p-6 hidden min-h-screen flex flex-col justify-center space-y-4">
+        <h2 class="text-[#0067ac] uppercase tracking-widest text-xl font-bold text-center mb-4">Selecione o formulário</h2>
 
         <button onclick="selectRoteiro('geral')" 
-        class="p-6 bg-white rounded-3xl shadow border-2 border-[#0067ac] text-[#0067ac] font-bold hover:bg-blue-50 transition-all">
-    FORMULÁRIO GERAL
+            class="p-6 bg-white rounded-3xl shadow-sm border-2 border-[#0067ac] text-[#0067ac] font-bold hover:bg-blue-50 transition-all text-left flex justify-between items-center">
+            <span>FORMULÁRIO GERAL</span>
+            <span class="text-xl">→</span>
         </button>
+
         <button onclick="selectRoteiro('pge')" 
-        class="p-6 bg-white rounded-3xl shadow border-2 border-[#0067ac] text-[#0067ac] font-bold hover:bg-blue-50 transition-all">
-            PGE – Gerenciamento de Efluentes
+            class="p-6 bg-white rounded-3xl shadow-sm border-2 border-[#0067ac] text-[#0067ac] font-bold hover:bg-blue-50 transition-all text-left flex justify-between items-center">
+            <span>PGE – Gerenciamento de Efluentes</span>
+            <span class="text-xl">→</span>
         </button>
 
-        <button onclick="selectRoteiro('aa')" class="p-6 bg-white rounded-3xl shadow border-2 border-[#0067ac] text-[#0067ac] font-bold hover:bg-blue-50 transition-all">
-            Acidentes Ambientais
+        <button onclick="selectRoteiro('aa')" 
+            class="p-6 bg-white rounded-3xl shadow-sm border-2 border-[#0067ac] text-[#0067ac] font-bold hover:bg-blue-50 transition-all text-left flex justify-between items-center">
+            <span>Acidentes Ambientais</span>
+            <span class="text-xl">→</span>
         </button>
-    </div>
-</section>
+    </section>
 
-<!-- ===================================================== -->
-<!-- SCREEN: FORMULÁRIO -->
-<!-- ===================================================== -->
-<section id="screen-formulario" class="max-w-3xl mx-auto p-4 hidden pb-32">
+    <section id="screen-formulario" class="max-w-3xl mx-auto p-4 hidden pb-32">
+        <div class="sticky top-6 bg-white/90 backdrop-blur-md z-40 border-b mb-4 p-2 rounded-b-xl">
+            <div class="flex justify-between items-center mb-2">
+                <button onclick="showScreen('screen-select-roteiro')" class="text-blue-600 font-bold text-sm flex items-center gap-1">
+                    ← Voltar
+                </button>
+                <span id="roteiro-atual-label" class="text-[10px] font-black text-gray-400 uppercase tracking-tighter">ROTEIRO</span>
+            </div>
 
-    <div class="sticky top-0 bg-gray-50 z-40 border-b mb-4">
-        <div class="flex justify-between items-center mb-3">
-            <button onclick="showScreen('screen-select-roteiro')" class="text-blue-600 text-sm">
-                ← Voltar
-            </button>
-            <span id="roteiro-atual-label" class="text-xs font-black text-gray-400">ROTEIRO</span>
-            <div></div>
+            <div id="sublocal_box" class="hidden mb-2">
+                <select id="sublocal_select" class="w-full p-3 border-2 border-gray-100 rounded-xl bg-gray-50 font-bold text-[#0067ac]"></select>
+            </div>
+
+            <div id="secao_box" class="mb-2">
+                <select id="secao_select" class="w-full p-3 border-2 border-gray-100 rounded-xl bg-gray-50 font-bold text-gray-700"></select>
+            </div>
         </div>
 
-        <div id="sublocal_box" class="hidden mb-3">
-            <label class="block text-xs font-bold text-gray-400 mb-1">Sublocal</label>
-            <select id="sublocal_select" class="w-full p-3 border rounded-xl"></select>
-        </div>
+        <div id="conteudo_formulario" class="space-y-6 animate-in"></div>
 
-        <div id="secao_box" class="mb-3">
-            <label class="block text-xs font-bold text-gray-400 mb-1">Seção</label>
-            <select id="secao_select" class="w-full p-3 border rounded-xl"></select>
-        </div>
-    </div>
-
-    <div id="conteudo_formulario" class="space-y-4 animate-in"></div>
-
-    <div class="fixed bottom-0 left-0 right-0 p-4 bg-white border-t">
-        <button onclick="showScreen('screen-final')"
-            class="w-full bg-green-600 text-white py-4 rounded-2xl font-bold">
-            FINALIZAR
-        </button>
-    </div>
-</section>
-
-
-<!-- ===================================================== -->
-<!-- SCREEN: FINAL -->
-<!-- ===================================================== -->
-<section id="screen-final" class="max-w-xl mx-auto p-8 hidden min-h-screen flex flex-col justify-center text-center">
-    <div class="bg-white p-8 rounded-[3rem] shadow-xl">
-
-        <h2 class="text-[#8dc63f] uppercase tracking-widest text-2xl text-center">Visita Concluída</h2>
-        <p class="text-gray-500 mb-8">Baixe o formulário consolidado.</p>
-
-        <div class="space-y-3">
-            <button onclick="sincronizarComBanco()" 
-        id="btn-sync"
-        class="w-full bg-[#0067ac] hover:bg-[#004d81] text-white py-4 rounded-2xl font-bold transition-all active:scale-95 shadow-md flex items-center justify-center gap-2">
-        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-        </svg>
-        SINCRONIZAR COM BANCO
-    </button>
-            <button onclick="showScreen('screen-select-roteiro')" 
-                class="w-full bg-gray-500 hover:bg-gray-600 text-white py-4 rounded-2xl font-bold transition-all active:scale-95 shadow-sm">
-            VOLTAR PARA FORMULÁRIOS
-        </button>
-            <button onclick="baixarExcelConsolidado()"
-                class="w-full bg-green-600 text-white py-4 rounded-2xl font-bold">
-                BAIXAR XLSX
-            </button>
-
-            <button onclick="confirmarNovaVistoria()"
-                class="w-full bg-gray-200 text-gray-600 py-4 rounded-2xl font-bold">
-                NOVA VISTORIA
+        <div class="fixed bottom-0 left-0 right-0 p-4 bg-white/80 backdrop-blur border-t z-50">
+            <button onclick="showScreen('screen-final')"
+                class="w-full bg-green-600 hover:bg-green-700 text-white py-5 rounded-2xl font-black shadow-lg transition-transform active:scale-95">
+                CONCLUIR ROTEIRO
             </button>
         </div>
-    </div>
-</section>
+    </section>
 
-<!-- ===================================================== -->
-<!-- SCRIPTS -->
-<!-- ===================================================== -->
-<script src="roteiros.js"></script>
-<script src="indexedDB.js"></script>
-<script src="app.js"></script>
+    <section id="screen-final" class="max-w-xl mx-auto p-8 hidden min-h-screen flex flex-col justify-center text-center">
+        <div class="bg-white p-10 rounded-[3rem] shadow-2xl border border-gray-50">
+            <div class="mb-6">
+                <div class="w-20 h-20 bg-green-100 text-green-600 rounded-full flex items-center justify-center mx-auto mb-4">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-10 w-10" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7" />
+                    </svg>
+                </div>
+                <h2 class="text-[#0067ac] font-black text-2xl uppercase">Visita Finalizada</h2>
+                <p class="text-gray-400 text-sm">Os dados estão seguros no dispositivo.</p>
+            </div>
 
-<script>
-  if ('serviceWorker' in navigator) {
-    window.addEventListener('load', () => {
-      navigator.serviceWorker.register('./sw.js')
-        .then(reg => console.log('Service Worker registrado com sucesso!', reg))
-        .catch(err => console.error('Falha ao registrar Service Worker:', err));
-    });
-  }
-</script>
+            <div class="space-y-4">
+                <button onclick="sincronizarComBanco()" 
+                    id="btn-sync"
+                    class="w-full bg-[#0067ac] text-white py-4 rounded-2xl font-bold flex items-center justify-center gap-2 shadow-blue-200 shadow-lg">
+                    SINCRONIZAR AGORA
+                </button>
+                
+                <button onclick="baixarExcelConsolidado()"
+                    class="w-full bg-green-600 text-white py-4 rounded-2xl font-bold shadow-green-100 shadow-lg">
+                    GERAR RELATÓRIO XLSX
+                </button>
+
+                <div class="pt-4 border-t mt-4 space-y-3">
+                    <button onclick="showScreen('screen-select-roteiro')" class="text-gray-500 font-bold text-sm">Editar Respostas</button>
+                    <button onclick="confirmarNovaVistoria()" class="w-full bg-gray-100 text-gray-500 py-4 rounded-2xl font-bold">INICIAR NOVA VISTORIA</button>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <script src="roteiros.js"></script>
+    <script src="indexedDB.js"></script>
+    <script src="app.js"></script>
+
+    <script>
+        // Função do Banner de Conexão
+        function atualizarBannerRede() {
+            const banner = document.getElementById('connection-banner');
+            const texto = document.getElementById('connection-text');
+            if (navigator.onLine) {
+                banner.className = "fixed top-0 left-0 right-0 z-[100] text-center py-1 text-[10px] font-bold uppercase tracking-widest bg-green-500 text-white";
+                texto.innerText = "● Conectado - Sincronização Habilitada";
+            } else {
+                banner.className = "fixed top-0 left-0 right-0 z-[100] text-center py-1 text-[10px] font-bold uppercase tracking-widest bg-amber-500 text-white";
+                texto.innerText = "○ Modo Offline - Dados Salvos Localmente";
+            }
+        }
+
+        window.addEventListener('online', atualizarBannerRede);
+        window.addEventListener('offline', atualizarBannerRede);
+        atualizarBannerRede(); // Executa ao carregar
+
+        // Service Worker
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', () => {
+                navigator.serviceWorker.register('./sw.js').catch(console.error);
+            });
+        }
+    </script>
 </body>
 </html>
