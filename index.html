@@ -18,6 +18,7 @@
     
     <link rel="stylesheet" href="style.css">
     <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
+
     <style>
         .animate-in { animation: fadeIn 0.3s ease-out; }
         @keyframes fadeIn {
@@ -25,10 +26,17 @@
             to { opacity: 1; transform: translateY(0); }
         }
     </style>
+
+ <script>
+    if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.register('sw.js')
+            .then(() => console.log("✅ Sistema Offline Pronto!"))
+            .catch(err => console.error("❌ Falha no SW:", err));
+    }
+</script>
 </head>
 
-<body class="bg-white p-8  text-gray-900 font-sans antialiased">
-
+<body class="bg-white p-8 text-gray-900 font-sans antialiased">
 <!-- ===================================================== -->
 <!-- SCREEN: CADASTRO -->
 <!-- ===================================================== -->
