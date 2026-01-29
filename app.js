@@ -33,7 +33,9 @@ let stream = null;
 let currentPhotoInputId = null;
 
 
-
+window.onerror = function(msg, url, line) {
+    alert("ERRO GLOBAL: " + msg + "\nLinha: " + line);
+};
 // ============================================================
 // 2. CONTROLE DE TELAS E NAVEGAÇÃO
 // ============================================================
