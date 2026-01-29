@@ -926,9 +926,11 @@ async function confirmarNovaVistoria() {
             id_vistoria: String(idAtual),
             avaliador: String(APP_STATE.avaliador || "Não Informado"),
             local: String(APP_STATE.local || "Não Informado"),
+            colaborador: String(APP_STATE.colaborador || ""),
             data: APP_STATE.data || new Date().toISOString().split('T')[0],
-            dados: JSON.parse(JSON.stringify(APP_STATE)), // "Congela" o estado atual
-            sincronizado: false,
+            respostas: APP_STATE.respostas, // Salva direto as respostas
+            tipoRoteiro: APP_STATE.tipoRoteiro,
+            sincronizado: 0, // Usar 0 ou 1 facilita filtros no IndexedDB e no R
             timestamp: Date.now()
         };
 
@@ -943,15 +945,18 @@ async function confirmarNovaVistoria() {
         };
 
         tx.oncomplete = () => {
-            // SÓ LIMPA TUDO APÓS O SUCESSO DO BANCO
+            // Preservamos apenas o essencial para a próxima vistoria
             const avaliadorOld = APP_STATE.avaliador;
-            localStorage.clear();
+    
+            // Em vez de clear(), removemos apenas as chaves de rascunho
+            const keysToRemove = ["id_visita", "id_vistoria", "APP_META"];
+            keysToRemove.forEach(k => localStorage.removeItem(k));
+    
             if (avaliadorOld) localStorage.setItem("avaliador", avaliadorOld);
-            
-            alert("Vistoria arquivada! Iniciando novo formulário...");
+    
+            alert("Vistoria arquivada com sucesso!");
             location.reload(); 
-        };
-
+    };
         tx.onerror = (e) => {
             console.error("Erro na transação:", e.target.error);
             throw new Error("Erro no IndexedDB: " + e.target.error);

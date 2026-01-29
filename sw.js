@@ -1,6 +1,5 @@
 const CACHE_NAME = 'cedae-vistorias-v6';
 
-// Pegamos os seus arquivos da lista do PWABuilder e limpamos para o formato padrão
 const ASSETS_TO_CACHE = [
   './',
   './index.html',
@@ -16,18 +15,13 @@ const ASSETS_TO_CACHE = [
   'https://unpkg.com/leaflet/dist/leaflet.css'
 ];
 
-// Instalação: Salva os arquivos no Cache
 self.addEventListener('install', (event) => {
   event.waitUntil(
-    caches.open(CACHE_NAME).then((cache) => {
-      console.log('Instalando Cache...');
-      return cache.addAll(ASSETS_TO_CACHE);
-    })
+    caches.open(CACHE_NAME).then((cache) => cache.addAll(ASSETS_TO_CACHE))
   );
   self.skipWaiting();
 });
 
-// Ativação: Limpa caches antigos
 self.addEventListener('activate', (event) => {
   event.waitUntil(
     caches.keys().then((keys) => {
@@ -39,26 +33,37 @@ self.addEventListener('activate', (event) => {
   self.clients.claim();
 });
 
-// Estratégia: Stale-While-Revalidate
-// Carrega do cache primeiro (rápido) e atualiza em segundo plano
-// No seu sw.js
+// Estratégia de Fetch com Desvio para API
 self.addEventListener('fetch', (event) => {
-  // FILTRO CRÍTICO: Ignora extensões e esquemas não-http
-  if (!(event.request.url.startsWith('http'))) return;
+  const url = event.request.url;
 
+  // 1. DESVIO CRÍTICO: Não interceptar chamadas para o ngrok ou sincronização
+  // Isso evita o erro "TypeError: Failed to fetch" no mobile
+  if (url.includes('ngrok') || url.includes('sincronizar')) {
+    return; // O navegador assume o controle direto da rede
+  }
+
+  // 2. FILTRO DE PROTOCOLO (Ignora extensões de navegador)
+  if (!(url.startsWith('http'))) return;
+
+  // 3. ESTRATÉGIA DE CACHE (Stale-While-Revalidate para o restante)
   event.respondWith(
-    caches.match(event.request).then((response) => {
-      return response || fetch(event.request).then((fetchResponse) => {
-        return caches.open('v1').then((cache) => {
-          
-          // SÓ FAZ O PUT SE FOR HTTP/HTTPS
-          if (event.request.url.startsWith('http')) {
-            cache.put(event.request, fetchResponse.clone());
-          }
-          
-          return fetchResponse;
-        });
+    caches.match(event.request).then((cachedResponse) => {
+      const fetchPromise = fetch(event.request).then((networkResponse) => {
+        // Só salva no cache se for uma requisição GET de sucesso
+        if (event.request.method === 'GET' && networkResponse.status === 200) {
+          const responseToCache = networkResponse.clone();
+          caches.open(CACHE_NAME).then((cache) => {
+            cache.put(event.request, responseToCache);
+          });
+        }
+        return networkResponse;
+      }).catch(() => {
+        // Se a rede falhar e não houver cache, você pode retornar uma resposta customizada aqui
+        return cachedResponse; 
       });
+
+      return cachedResponse || fetchPromise;
     })
   );
 });
