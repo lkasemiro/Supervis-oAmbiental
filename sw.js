@@ -1,4 +1,4 @@
-const CACHE_NAME = 'cedae-vistorias-v1';
+const CACHE_NAME = 'cedae-vistorias-v6';
 
 // Pegamos os seus arquivos da lista do PWABuilder e limpamos para o formato padrão
 const ASSETS_TO_CACHE = [
