@@ -90,25 +90,25 @@ const DB_API = {
     // --------------------------------------------------------
     // SALVAR FOTO
     // --------------------------------------------------------
-      async saveFoto(fotoId, blob, idPergunta, base64) {
+     async saveFoto(fotoId, blob, idPergunta, base64) {
     const db = await this.openDB();
     const tx = db.transaction(STORE_FOTOS, "readwrite");
     const store = tx.objectStore(STORE_FOTOS);
 
-    const tipo = (typeof APP_STATE !== 'undefined') ? APP_STATE.tipoRoteiro : "desconhecido";
-
     return new Promise((resolve, reject) => {
         const req = store.put({
             foto_id: fotoId,
+            id_visita: APP_STATE.id_visita, // CRUCIAL: Vincula a foto à visita atual
             pergunta_id: idPergunta,
-            tipo_roteiro: tipo, 
+            sublocal: APP_STATE.sublocal || "Geral", // CRUCIAL: Vincula ao sublocal (PGE)
             blob: blob,
-            base64: base64, // CRUCIAL: Adicionado para o ExcelJS e Miniaturas
+            base64: base64,
             timestamp: new Date().toISOString()
         });
         req.onsuccess = () => resolve(true);
         req.onerror = () => reject();
     });
+
 },
 
     // --------------------------------------------------------
@@ -160,8 +160,24 @@ window.saveAnswerToDB = (idPergunta, valor) => {
     }, SAVE_DELAY);
 };
 // Agora aceita o base64 vindo do reduzirImagem() do app.js
-window.savePhotoToDB = (fotoId, blob, idPergunta, base64) => {
-    return DB_API.saveFoto(fotoId, blob, idPergunta, base64);
+window.savePhotoToDB = async (fotoId, blob, idPergunta, base64) => {
+    const db = await DB_API.openDB();
+    const tx = db.transaction(['fotos'], 'readwrite');
+    const store = tx.objectStore('fotos');
+
+    return new Promise((resolve, reject) => {
+        store.put({
+            foto_id: fotoId,
+            id_visita: APP_STATE.id_visita, // ESSENCIAL PARA O EXCEL
+            pergunta_id: idPergunta,
+            sublocal: APP_STATE.sublocal || "Geral", // ESSENCIAL PARA O PGE
+            blob: blob,
+            base64: base64,
+            timestamp: new Date().toISOString()
+        });
+        tx.oncomplete = () => resolve();
+        tx.onerror = (e) => reject(e);
+    });
 };
 window.DB_API = DB_API;
 // ------------------------------------------------------------

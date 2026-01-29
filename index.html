@@ -17,7 +17,7 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.4.0/exceljs.min.js"></script>
     
     <link rel="stylesheet" href="style.css">
-    <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
+
 
     <style>
         .animate-in { animation: fadeIn 0.3s ease-out; }
@@ -37,6 +37,9 @@
 </head>
 
 <body class="bg-white p-8 text-gray-900 font-sans antialiased">
+    <div id="status-sinc" style="position: fixed; bottom: 10px; right: 10px; font-size: 12px; background: #eee; padding: 5px; z-index: 1000;">
+  Status: Aguardando...
+</div>
 <!-- ===================================================== -->
 <!-- SCREEN: CADASTRO -->
 <!-- ===================================================== -->
@@ -70,7 +73,8 @@
                 <input id="colaborador" type="text" class="w-full p-4 bg-gray-50 rounded-2xl">
             </div>
 
-            <button id="btn-cadastro-continuar"
+           <button id="btn-cadastro-continuar"
+                onclick="validarEComecar()"
                 class="w-full bg-[#0067ac] text-white py-5 rounded-2xl font-black">
                 INICIAR VISTORIA
             </button>

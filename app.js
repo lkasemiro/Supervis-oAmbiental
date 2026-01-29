@@ -52,81 +52,143 @@ function showScreen(id) {
 // ============================================================
 // 3. BOOTSTRAP DO APLICATIVO
 // ============================================================
+// Função de suporte para recuperar metadados leves
+function carregarMetaDoLocalStorage() {
+    const metaStr = localStorage.getItem("APP_META");
+    if (metaStr) {
+        try {
+            const meta = JSON.parse(metaStr);
+            APP_STATE.avaliador = meta.avaliador || "";
+            APP_STATE.local = meta.local || "";
+            APP_STATE.id_visita = meta.id_visita || "";
+            APP_STATE.data = meta.data || "";
 
+            // Preenche os campos da tela de cadastro se existirem
+            const elAval = document.getElementById("avaliador");
+            const elLocal = document.getElementById("local");
+            const elData = document.getElementById("data_visita");
+            
+            if (elAval) elAval.value = APP_STATE.avaliador;
+            if (elLocal) elLocal.value = APP_STATE.local;
+            if (elData) elData.value = APP_STATE.data;
+        } catch (e) {
+            console.error("Erro ao ler APP_META:", e);
+        }
+    }
+}
 async function initApp() {
-    // 1. Carregar meta dados do LocalStorage (preenche APP_STATE.local, se existir)
+    console.log("🚀 Iniciando App...");
+    
+    // 1. Carrega Metadados primeiro (rápido)
     carregarMetaDoLocalStorage();
 
-    // 2. Tenta carregar dados salvos no IndexedDB (sobrescreve APP_STATE, se existir visita salva)
+    // 2. Carrega progresso do IndexedDB (completo)
     if (window.DB_API && window.DB_API.loadVisita) {
-        const dadosSalvos = await DB_API.loadVisita();
-        if (dadosSalvos) {
-            // Se houver dados salvos, use-os, mas garanta que o local persista se o DB não tiver
-            APP_STATE = dadosSalvos; 
+        try {
+            const dadosSalvos = await DB_API.loadVisita();
+            if (dadosSalvos) {
+                // Preserva o roteiro estático, carrega apenas respostas e estado
+                APP_STATE.respostas = dadosSalvos.respostas || APP_STATE.respostas;
+                APP_STATE.id_visita = dadosSalvos.id_visita || APP_STATE.id_visita;
+            }
+        } catch (err) {
+            console.warn("Nenhum dado prévio no IndexedDB encontrado.");
         }
     }
 
-    // 3. Popula o seletor de Locais
-    const selLocal = document.getElementById("local"); // Variável renomeada para clareza
+    // 3. Garante ID Único (Segurança de Chave Primária)
+    if (!APP_STATE.id_visita) {
+        APP_STATE.id_visita = `VIST_${Date.now()}`;
+    }
+
+    // 4. Configura Seletor de Locais
+    const selLocal = document.getElementById("local");
     if (selLocal) {
         selLocal.innerHTML = `<option disabled selected value="">Selecionar Local...</option>` +
             LOCAIS_VISITA.map(l => `<option value="${l}">${l}</option>`).join("");
         
-        // Define o valor selecionado com base no APP_STATE.local carregado
-        if (APP_STATE.local) {
-            selLocal.value = APP_STATE.local;
-        }
-
-        // ADICIONADO: Este evento garante que APP_STATE.local seja atualizado IMEDIATAMENTE
+        if (APP_STATE.local) selLocal.value = APP_STATE.local;
         selLocal.onchange = () => {
             APP_STATE.local = selLocal.value;
-            localStorage.setItem("local", selLocal.value);
-            // Opcional: Salvar no DB imediatamente também
-            // if (window.DB_API && window.DB_API.saveVisita) DB_API.saveVisita(APP_STATE);
+            registrarResposta(null, null); // Força um salvamento do estado
         };
     }
 
-    // 4. Decisão de Tela Inicial
+    // 5. Direcionamento de Tela
     if (APP_STATE.local && APP_STATE.avaliador) {
-        // Se já tem local e avaliador, vai para a seleção de roteiro
         showScreen("screen-select-roteiro");
     } else {
-        // Senão, fica na tela de cadastro
         showScreen("screen-cadastro");
     }
 }
+function validarEComecar() {
+    const avaliador = document.getElementById("avaliador").value;
+    const local = document.getElementById("local").value;
+    const data = document.getElementById("data_visita").value;
 
+    if (!avaliador || !local || !data) {
+        alert("Por favor, preencha o Avaliador, Local e Data antes de iniciar.");
+        return;
+    }
+
+    // Salva os dados no APP_STATE
+    APP_STATE.avaliador = avaliador;
+    APP_STATE.local = local;
+    APP_STATE.data = data;
+    APP_STATE.colaborador = document.getElementById("colaborador").value;
+
+    // Persiste imediatamente
+    registrarResposta(null, null); 
+
+    // Muda de tela
+    showScreen("screen-select-roteiro");
+}
+
+// Garante que a função esteja disponível globalmente
+window.validarEComecar = validarEComecar;
 // ============================================================
 // 4. PERSISTÊNCIA DE RESPOSTAS
 // ============================================================
 
-function registrarResposta(idPergunta, valor) {
-    const tipo = APP_STATE.tipoRoteiro;
-    if (!tipo) return;
+function registrarResposta(idPergunta, valor, tipoRoteiro) {
+    // 1. Atualiza o estado em memória
+    const roteiroAlvo = tipoRoteiro || APP_STATE.tipoRoteiro;
+    if (!APP_STATE.respostas[roteiroAlvo]) {
+        APP_STATE.respostas[roteiroAlvo] = {};
+    }
 
-    if (!APP_STATE.respostas[tipo]) APP_STATE.respostas[tipo] = {};
-    APP_STATE.respostas[tipo][idPergunta] = valor;
+    if (roteiroAlvo === "pge") {
+        const chaveComposta = `${idPergunta}_${APP_STATE.sublocal}`;
+        APP_STATE.respostas.pge[chaveComposta] = valor;
+    } else {
+        APP_STATE.respostas[roteiroAlvo][idPergunta] = valor;
+    }
 
-    if (window.saveAnswerToDB) window.saveAnswerToDB(idPergunta, valor);
+    // 2. SEGURANÇA: Salva no LocalStorage APENAS o essencial (metadados)
+    // Criamos um clone para não deletar os dados do objeto original em uso
+    const metaData = {
+        avaliador: APP_STATE.avaliador,
+        local: APP_STATE.local,
+        id_visita: APP_STATE.id_visita,
+        data: APP_STATE.data,
+        sublocal: APP_STATE.sublocal,
+        tipoRoteiro: APP_STATE.tipoRoteiro
+    };
+    
+    try {
+        localStorage.setItem("APP_META", JSON.stringify(metaData));
+    } catch (e) {
+        console.error("Falha ao salvar metadados no LocalStorage");
+    }
 
-    applyConditionalLogic();
-    console.log(`Salvo [${tipo}]: ${idPergunta} = ${valor}`);
+    // 3. PERSISTÊNCIA REAL: Salva o estado completo no IndexedDB (Capacidade GIGANTE)
+    // O IndexedDB não tem o limite de 5MB do LocalStorage
+    if (window.DB_API && window.DB_API.saveVisita) {
+        window.DB_API.saveVisita(APP_STATE); 
+    }
 }
 
-function carregarMetaDoLocalStorage() {
-    ["avaliador", "local", "colaborador", "data"].forEach(key => {
-        const val = localStorage.getItem(key);
-        if (val) {
-            APP_STATE[key] = val;
-            const el = document.getElementById(key === "data" ? "data_visita" : key);
-            if (el) el.value = val;
-        }
-    });
-}
-
-
- carregarMetaDoLocalStorage();
- initCadastro();
+initApp();
 // ============================================================
 // 5. SELEÇÃO DE ROTEIRO (FLUXO PRINCIPAL)
 // ============================================================
@@ -597,52 +659,35 @@ async function removerFoto(fotoId, idPergunta) {
     }
 }
 
-
-/**
- * 6. PERSISTÊNCIA GLOBAL (Utilizada pelo processarFoto)
- */
-window.savePhotoToDB = async (fotoId, blob, idPergunta, base64) => {
-    const db = await DB_API.openDB(); 
-    return new Promise((resolve, reject) => {
-        const transaction = db.transaction(['fotos'], 'readwrite');
-        const store = transaction.objectStore('fotos');
-
-        const request = store.put({
-            foto_id: fotoId,
-            pergunta_id: idPergunta,
-            blob: blob,
-            base64: base64,
-            timestamp: new Date().toISOString()
-        });
-
-        request.onsuccess = () => resolve();
-        request.onerror = (e) => reject(e);
-    });
-};
-// ---------------------
+// ============================================================
 // Iniciar cadastro
-
+// ============================================================
 function initCadastro() {
     document.getElementById("btn-cadastro-continuar").onclick = () => {
         APP_STATE.avaliador = document.getElementById("avaliador").value;
         APP_STATE.local = document.getElementById("local").value;
         APP_STATE.data = document.getElementById("data_visita").value;
+        // GERAÇÃO DO ID ÚNICO PARA ESTA VISTORIA
+        APP_STATE.id_visita = `VIST_${Date.now()}_${APP_STATE.local.replace(/\s+/g, '')}`;
 
         if (!APP_STATE.avaliador || !APP_STATE.local || !APP_STATE.data) return alert("Preencha tudo!");
 
         localStorage.setItem("avaliador", APP_STATE.avaliador);
+        localStorage.setItem("colaborador", APP_STATE.colaborador);
         localStorage.setItem("local", APP_STATE.local);
         localStorage.setItem("data", APP_STATE.data);
+        localStorage.setItem("id_visita", APP_STATE.id_visita);
         
         showScreen("screen-select-roteiro");
     };
 
-    // Se já havia uma vistoria em curso, podemos pular direto para a seleção de roteiro
     if (APP_STATE.local && APP_STATE.avaliador) {
+        // Recupera o ID se a página recarregar
+        APP_STATE.id_visita = localStorage.getItem("id_visita") || `VIST_${Date.now()}`;
         showScreen("screen-select-roteiro");
     } else {
         showScreen("screen-cadastro");
- }
+    }
 }
 
 // ============================================================
@@ -650,9 +695,7 @@ function initCadastro() {
 // ============================================================
 async function baixarExcelConsolidado() {
     try {
-        console.log("📊 Consolidando respostas...");
         const workbook = new ExcelJS.Workbook();
-        
         const configuracao = [
             { nome: "Geral", id: "geral", fonte: window.ROTEIRO_GERAL },
             { nome: "PGE", id: "pge", fonte: window.ROTEIRO_PGE },
@@ -662,141 +705,127 @@ async function baixarExcelConsolidado() {
         for (const config of configuracao) {
             if (!config.fonte) continue;
             const sheet = workbook.addWorksheet(config.nome);
-            
             sheet.columns = [
                 { header: 'SEÇÃO', key: 'secao', width: 20 },
+                { header: 'SUBLOCAL', key: 'sublocal', width: 25 },
                 { header: 'PERGUNTA', key: 'pergunta', width: 50 },
                 { header: 'RESPOSTA', key: 'resposta', width: 40 },
                 { header: 'FOTOS (ANEXOS)', key: 'fotos', width: 25 }
             ];
 
-            // Pega as respostas salvas para este roteiro específico
             const respostasDoTipo = APP_STATE.respostas[config.id] || {};
 
             for (const p of config.fonte) {
-                // CORREÇÃO PARA PGE: No PGE, só exportamos se a pergunta for do Local e Sublocal selecionados
+                // CORREÇÃO PGE: Busca pela chave composta ID + Sublocal
+                let respostaTexto = "";
                 if (config.id === "pge") {
-                    if (p.Local !== APP_STATE.local || p.Sublocal !== APP_STATE.sublocal) {
-                        continue; // Pula perguntas que não são deste sublocal
-                    }
+                    const chaveComposta = `${p.id}_${p.Sublocal}`;
+                    respostaTexto = respostasDoTipo[chaveComposta] || "";
+                } else {
+                    respostaTexto = respostasDoTipo[p.id] || "";
                 }
-
-                const respostaTexto = respostasDoTipo[p.id] || "";
                 
-                // Se a pergunta não tem resposta E não tem foto, e você quiser pular, use:
-                // if (!respostaTexto) continue;
+                // Busca fotos filtrando pelo id da pergunta (e opcionalmente sublocal)
+                const fotosNoBanco = await window.DB_API.getFotosPergunta(p.id);
+                // Filtra fotos apenas desta visita e deste sublocal se for PGE
+                const fotosFiltradas = fotosNoBanco.filter(f => 
+                    f.id_visita === APP_STATE.id_visita && 
+                    (config.id !== "pge" || f.sublocal === p.Sublocal)
+                );
+
+                if (!respostaTexto && fotosFiltradas.length === 0) continue;
 
                 const novaLinha = sheet.addRow({
                     secao: p.Secao || p["Seção"] || "",
+                    sublocal: p.Sublocal || "Geral",
                     pergunta: p.Pergunta,
-                    resposta: String(respostaTexto) // Garante que o Excel trate como texto
+                    resposta: String(respostaTexto)
                 });
 
-                // LÓGICA DE FOTOS (Mantida conforme seu relato de funcionamento)
-                try {
-                    const fotosNoBanco = await window.DB_API.getFotosPergunta(p.id);
-                    if (fotosNoBanco && fotosNoBanco.length > 0) {
-                        novaLinha.height = 100;
-                        for (let i = 0; i < fotosNoBanco.length; i++) {
-                            const arrayBuffer = await fotosNoBanco[i].blob.arrayBuffer();
-                            const imageId = workbook.addImage({
-                                buffer: arrayBuffer,
-                                extension: 'jpeg',
-                            });
-                            sheet.addImage(imageId, {
-                                tl: { col: 3, row: novaLinha.number - 1 },
-                                ext: { width: 120, height: 120 }
-                            });
-                        }
+                if (fotosFiltradas.length > 0) {
+                    novaLinha.height = 100;
+                    for (let i = 0; i < fotosFiltradas.length; i++) {
+                        const arrayBuffer = await fotosFiltradas[i].blob.arrayBuffer();
+                        const imageId = workbook.addImage({ buffer: arrayBuffer, extension: 'jpeg' });
+                        sheet.addImage(imageId, {
+                            tl: { col: 4, row: novaLinha.number - 1 },
+                            ext: { width: 120, height: 120 }
+                        });
                     }
-                } catch (e) { console.error("Erro na foto:", e); }
+                }
             }
         }
-
-        // Finalização (Download)
+        // ... (Download XLSX permanece igual ao seu código)
         const buffer = await workbook.xlsx.writeBuffer();
         const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
-        
-        // Use o método nativo se o saveAs falhar
         const url = window.URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url;
         a.download = `Relatorio_${APP_STATE.local}_${new Date().getTime()}.xlsx`;
         a.click();
-        window.URL.revokeObjectURL(url);
-
-    } catch (err) {
-        console.error("Erro crítico:", err);
-    }
+    } catch (err) { console.error(err); }
 }
 // ============================================================
 // 12. EXPORTAÇÃO E SINCRONIZAÇÃO (REVISADO PARA R/PLUMBER)
 // ============================================================
-
 async function sincronizarComBanco() {
-    const btn = document.getElementById('btn-sync');
-    if (!btn) return;
+    if (!navigator.onLine) return alert("Sem internet!");
+    const statusEl = document.getElementById('status-sinc');
+    if(statusEl) statusEl.innerText = "Iniciando sincronização...";
+
+    const db = await DB_API.openDB();
     
-    const originalText = btn.innerHTML;
-    
-    try {
-        if (!navigator.onLine) throw new Error("Sem conexão com internet.");
+    // 1. Pega vistorias pendentes com tratamento de erro
+    const vistorias = await new Promise(res => {
+        const req = db.transaction("vistorias", "readonly").objectStore("vistorias").getAll();
+        req.onsuccess = () => res(req.result || []);
+    });
 
-        btn.disabled = true;
-        btn.innerHTML = "PREPARANDO DADOS...";
+    const pendentes = vistorias.filter(v => !v.sincronizado);
+    if (pendentes.length === 0) return alert("Nada para sincronizar!");
 
-        // 1. Criar o pacote de dados completo
-        // Adicionamos um ID único (Timestamp + Local) para o SQL
-        const dadosParaEnviar = {
-            ...APP_STATE,
-            id_vistoria: `VIST_${Date.now()}_${APP_STATE.local.replace(/\s+/g, '')}`,
-            data_envio: new Date().toISOString()
-        };
+    // 2. Carrega TODAS as fotos uma única vez (Otimização)
+    const todasFotos = await new Promise(res => {
+        const req = db.transaction("fotos", "readonly").objectStore("fotos").getAll();
+        req.onsuccess = () => res(req.result || []);
+    });
 
-        // 2. Buscar fotos do IndexedDB para enviar junto (opcional, mas recomendado)
-        // Se o seu banco R for lidar com as fotos, precisamos extraí-las aqui
-        const fotosTransacao = await DB_API.openDB();
-        const fotos = await new Promise((resolve) => {
-            const tx = fotosTransacao.transaction(['fotos'], 'readonly');
-            const req = tx.objectStore('fotos').getAll();
-            req.onsuccess = () => resolve(req.result);
-        });
-        
-        dadosParaEnviar.fotos_coletadas = fotos; // Anexa as fotos ao JSON
-
-        btn.innerHTML = "ENVIANDO AO SERVIDOR...";
-
-        // 3. Chamada para a sua API Plumber em R
-        // Se estiver testando localmente, use http://localhost:8000/vistorias/sincronizar
-        
-        const response = await fetch('https://strapless-christi-unspread.ngrok-free.dev/vistorias/sincronizar', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(dadosParaEnviar)
-        });
-
-        if (response.ok) {
-            alert("✅ Dados enviados com sucesso para o banco central (R/SQL)!");
-            btn.classList.replace('bg-[#0067ac]', 'bg-green-600');
-            btn.innerHTML = "SINCRONIZADO";
+    for (let visita of pendentes) {
+        try {
+            if(statusEl) statusEl.innerText = `Sincronizando: ${visita.id_vistoria}...`;
             
-            // Opcional: Marcar no IndexedDB que esta visita já foi enviada
-        } else {
-            const errorData = await response.json();
-            throw new Error(errorData.message || "Erro no servidor R");
-        }
-    } catch (error) {
-        console.error("Erro na sincronização:", error);
-        alert(`❌ Falha: ${error.message}`);
-        btn.innerHTML = originalText;
-        btn.disabled = false;
-    }
-}
+            // Vincula fotos específicas
+            visita.fotos_coletadas = todasFotos.filter(f => f.id_visita === visita.id_vistoria);
 
-/**
- * Sincronização Automática em Background
- * Tenta enviar vistorias pendentes quando a internet volta
- */
+            const res = await fetch('https://strapless-christi-unspread.ngrok-free.dev/vistorias/sincronizar', {
+                method: 'POST',
+                headers: { 
+                    'Content-Type': 'application/json',
+                    'ngrok-skip-browser-warning': 'true' 
+                },
+                body: JSON.stringify(visita)
+            });
+
+            if (res.ok) {
+                const respostaServidor = await res.json();
+                if (respostaServidor.status === "sucesso") {
+                    visita.sincronizado = true;
+                    // Salva o status de sincronizado no banco local
+                    const txUp = db.transaction("vistorias", "readwrite");
+                    await txUp.objectStore("vistorias").put(visita);
+                    console.log(`✅ ${visita.id_vistoria} sincronizada.`);
+                }
+            }
+        } catch (e) {
+            console.error("Falha ao sincronizar item:", e);
+        }
+    }
+    if(statusEl) statusEl.innerText = "Sincronização Finalizada!";
+    alert("Processo concluído!");
+}
+// ============================================================
+// 13. SINCRONIZAÇÃO AUTOMÁTICA AO VOLTAR ONLINE
+// ============================================================
 async function sincronizarVisitasPendentes() {
     if (!navigator.onLine) return;
 
@@ -833,66 +862,56 @@ async function sincronizarVisitasPendentes() {
 window.addEventListener('online', sincronizarVisitasPendentes);
 // CONFIRMAR NOVA VISTORIA
 async function confirmarNovaVistoria() {
-    const msg = "Tem certeza que deseja iniciar uma nova vistoria? Todos os dados atuais (respostas e fotos) serão apagados permanentemente.";
-    
-    if (confirm(msg)) {
-        try {
-            // 1. Limpa o IndexedDB (Respostas e Fotos)
-            const req = indexedDB.deleteDatabase(DB_NAME);
-            
-            req.onerror = () => {
-                console.error("Erro ao apagar banco de dados.");
-                alert("Erro ao limpar dados antigos. Tente fechar outras abas do app.");
-            };
+    if (!confirm("Deseja salvar esta vistoria na fila e iniciar uma nova?")) return;
 
-            req.onsuccess = () => {
-                console.log("Banco de dados apagado com sucesso.");
-                
-                // 2. Limpa o LocalStorage (Dados do cabeçalho: avaliador, local, etc)
-                localStorage.clear();
+    try {
+        const db = await DB_API.openDB();
+        const tx = db.transaction(["vistorias"], "readwrite");
+        
+        // GARANTIA: O id_vistoria DEVE estar na raiz do objeto
+        const objetoParaSalvar = {
+            id_vistoria: APP_STATE.id_visita || `VIST_${Date.now()}`,
+            avaliador: APP_STATE.avaliador,
+            local: APP_STATE.local,
+            data: APP_STATE.data,
+            tipoRoteiro: APP_STATE.tipoRoteiro,
+            dados: JSON.parse(JSON.stringify(APP_STATE)),
+            sincronizado: false,
+            timestamp: Date.now()
+        };
 
-                // 3. Limpa o estado da memória
-                APP_STATE.respostas = { geral: {}, pge: {}, aa: {} };
-                APP_STATE.fotos = {};
-                
-                // 4. Recarrega a página para o estado inicial
-                location.reload();
-            };
+        await tx.objectStore("vistorias").put(objetoParaSalvar);
 
-            // Caso o banco esteja bloqueado por outra aba aberta
-            req.onblocked = () => {
-                alert("Por favor, feche outras abas deste aplicativo abertas para poder reiniciar.");
-            };
-
-        } catch (err) {
-            console.error("Falha ao reiniciar:", err);
-            // Fallback caso o IndexedDB falhe
+        tx.oncomplete = () => {
             localStorage.clear();
-            location.reload();
-        }
+            // Mantém apenas o avaliador para facilitar a próxima
+            localStorage.setItem("avaliador", APP_STATE.avaliador);
+            location.reload(); 
+        };
+    } catch (err) {
+        console.error("Erro ao arquivar:", err);
+        alert("Erro crítico ao salvar no banco local!");
     }
-
 }
 window.savePhotoToDB = async (fotoId, blob, idPergunta, base64) => {
     const db = await DB_API.openDB();
-
     return new Promise((resolve, reject) => {
         const tx = db.transaction(['fotos'], 'readwrite');
         const store = tx.objectStore('fotos');
 
-        const req = store.put({
+        store.put({
             foto_id: fotoId,
+            id_visita: APP_STATE.id_visita, // NOVO: Vínculo com a vistoria
             pergunta_id: idPergunta,
+            sublocal: APP_STATE.sublocal || "Geral", // NOVO: Para o PGE
             blob,
             base64,
             timestamp: Date.now()
         });
-
-        req.onsuccess = () => resolve();
-        req.onerror = (e) => reject(e);
+        tx.oncomplete = () => resolve();
+        tx.onerror = (e) => reject(e);
     });
 };
-
 // Exemplo de como seu getFotosPergunta pode ser ajustado:
 DB_API.getFotosPergunta = async (idPergunta) => {
     const db = await DB_API.openDB();
@@ -924,3 +943,4 @@ window.sincronizarComBanco = sincronizarComBanco;
 window.confirmarNovaVistoria = confirmarNovaVistoria;
 
 document.addEventListener("DOMContentLoaded", initApp);
+document.getElementById('status-sinc').innerText = "Sincronizando..."

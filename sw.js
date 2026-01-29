@@ -41,20 +41,24 @@ self.addEventListener('activate', (event) => {
 
 // Estratégia: Stale-While-Revalidate
 // Carrega do cache primeiro (rápido) e atualiza em segundo plano
+// No seu sw.js
 self.addEventListener('fetch', (event) => {
-  if (event.request.method !== 'GET') return;
+  // FILTRO CRÍTICO: Ignora extensões e esquemas não-http
+  if (!(event.request.url.startsWith('http'))) return;
 
   event.respondWith(
-    caches.match(event.request).then((cachedResponse) => {
-      const fetchPromise = fetch(event.request).then((networkResponse) => {
-        if (networkResponse && networkResponse.status === 200) {
-          const cacheCopy = networkResponse.clone();
-          caches.open(CACHE_NAME).then((cache) => cache.put(event.request, cacheCopy));
-        }
-        return networkResponse;
-      }).catch(() => cachedResponse);
-
-      return cachedResponse || fetchPromise;
+    caches.match(event.request).then((response) => {
+      return response || fetch(event.request).then((fetchResponse) => {
+        return caches.open('v1').then((cache) => {
+          
+          // SÓ FAZ O PUT SE FOR HTTP/HTTPS
+          if (event.request.url.startsWith('http')) {
+            cache.put(event.request, fetchResponse.clone());
+          }
+          
+          return fetchResponse;
+        });
+      });
     })
   );
 });
