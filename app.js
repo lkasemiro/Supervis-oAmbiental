@@ -48,9 +48,6 @@ function showScreen(id) {
     });
     window.scrollTo(0, 0);
 }
-
-
-
 // ============================================================
 // 3. BOOTSTRAP DO APLICATIVO
 // ============================================================
@@ -99,8 +96,10 @@ async function initApp() {
     }
 
     // 3. Garante ID Único (Segurança de Chave Primária)
-    if (!APP_STATE.id_visita) {
-        APP_STATE.id_visita = `VIST_${Date.now()}`;
+    if (!APP_STATE.id_vistoria) {
+    // Buscamos id_vistoria para bater com o banco
+    APP_STATE.id_vistoria = localStorage.getItem("id_vistoria") || `VIST_${Date.now()}`;
+    localStorage.setItem("id_vistoria", APP_STATE.id_vistoria);
     }
 
     // 4. Configura Seletor de Locais
@@ -124,14 +123,17 @@ async function initApp() {
     }
 }
 function validarEComecar() {
-    const avaliador = document.getElementById("avaliador").value;
-    const local = document.getElementById("local").value;
-    const data = document.getElementById("data_visita").value;
-
-    if (!avaliador || !local || !data) {
-        alert("Por favor, preencha o Avaliador, Local e Data antes de iniciar.");
-        return;
-    }
+    // ... validações ...
+    APP_STATE.avaliador = avaliador;
+    APP_STATE.local = local;
+    APP_STATE.data = data;
+    
+    // GARANTIA: Salva explicitamente a chave que o IndexedDB exige
+    localStorage.setItem("id_vistoria", APP_STATE.id_vistoria);
+    
+    registrarResposta(null, null); 
+    showScreen("screen-select-roteiro");
+}
 
     // Salva os dados no APP_STATE
     APP_STATE.avaliador = avaliador;
@@ -149,29 +151,37 @@ function validarEComecar() {
 // Garante que a função esteja disponível globalmente
 window.validarEComecar = validarEComecar;
 // ============================================================
-// 4. PERSISTÊNCIA DE RESPOSTAS
+// 4. PERSISTÊNCIA DE RESPOSTAS (REVISADA)
 // ============================================================
 
 function registrarResposta(idPergunta, valor, tipoRoteiro) {
-    // 1. Atualiza o estado em memória
+    // 1. Identifica o roteiro ativo
     const roteiroAlvo = tipoRoteiro || APP_STATE.tipoRoteiro;
+    if (!roteiroAlvo) return; // Segurança contra chamadas prematuras
+
     if (!APP_STATE.respostas[roteiroAlvo]) {
         APP_STATE.respostas[roteiroAlvo] = {};
     }
 
-    if (roteiroAlvo === "pge") {
-        const chaveComposta = `${idPergunta}_${APP_STATE.sublocal}`;
-        APP_STATE.respostas.pge[chaveComposta] = valor;
-    } else {
-        APP_STATE.respostas[roteiroAlvo][idPergunta] = valor;
+    // 2. Registra o valor (se houver idPergunta)
+    if (idPergunta !== null) {
+        if (roteiroAlvo === "pge") {
+            const chaveComposta = `${idPergunta}_${APP_STATE.sublocal || 'Geral'}`;
+            APP_STATE.respostas.pge[chaveComposta] = valor;
+        } else {
+            APP_STATE.respostas[roteiroAlvo][idPergunta] = valor;
+        }
     }
 
-    // 2. SEGURANÇA: Salva no LocalStorage APENAS o essencial (metadados)
-    // Criamos um clone para não deletar os dados do objeto original em uso
+    // 3. SEGURANÇA DE CHAVE PRIMÁRIA (O Pulo do Gato)
+    // Forçamos o APP_STATE a ter a chave exata que o IndexedDB v7 espera: id_vistoria
+    const idFinal = APP_STATE.id_vistoria || APP_STATE.id_visita || localStorage.getItem("id_vistoria");
+    
+    // 4. Salva Metadados Leves (LocalStorage)
     const metaData = {
         avaliador: APP_STATE.avaliador,
         local: APP_STATE.local,
-        id_visita: APP_STATE.id_visita,
+        id_vistoria: idFinal, // Padronizado
         data: APP_STATE.data,
         sublocal: APP_STATE.sublocal,
         tipoRoteiro: APP_STATE.tipoRoteiro
@@ -179,20 +189,33 @@ function registrarResposta(idPergunta, valor, tipoRoteiro) {
     
     try {
         localStorage.setItem("APP_META", JSON.stringify(metaData));
+        localStorage.setItem("id_vistoria", idFinal); // redundância de segurança
     } catch (e) {
-        console.error("Falha ao salvar metadados no LocalStorage");
+        console.warn("LocalStorage cheio ou bloqueado.");
     }
 
-    // 3. PERSISTÊNCIA REAL: Salva o estado completo no IndexedDB (Capacidade GIGANTE)
-    // O IndexedDB não tem o limite de 5MB do LocalStorage
+    // 5. PERSISTÊNCIA NO INDEXEDDB
+    // Criamos o objeto final garantindo que id_vistoria exista
     if (window.DB_API && window.DB_API.saveVisita) {
-        window.DB_API.saveVisita(APP_STATE); 
+        const dadosParaSalvar = {
+            ...APP_STATE,
+            id_vistoria: idFinal // Injeção obrigatória para o keyPath
+        };
+        
+        // Removemos id_visita (opcional) para evitar confusão no futuro
+        delete dadosParaSalvar.id_visita;
+
+        window.DB_API.saveVisita(dadosParaSalvar).catch(err => {
+            console.error("Erro ao salvar no IndexedDB:", err);
+            // No celular, mostramos o erro real se falhar
+            if(navigator.userAgent.includes("Mobi")) {
+                console.log("Falha no put: Verifique se o keyPath 'id_vistoria' é nulo.");
+            }
+        });
     }
 }
-
-initApp();
 // ============================================================
-// 5. SELEÇÃO DE ROTEIRO (FLUXO PRINCIPAL)
+// 6. SELEÇÃO DE ROTEIRO (FLUXO PRINCIPAL)
 // ============================================================
 
 async function selectRoteiro(tipo) {
@@ -246,7 +269,7 @@ async function selectRoteiro(tipo) {
 
 
 // ============================================================
-// 6. SUBLOCAL + SEÇÕES
+// 7. SUBLOCAL + SEÇÕES
 // ============================================================
 function montarSecoes() {
     const sel = document.getElementById("secao_select");
@@ -268,8 +291,6 @@ function montarSecoes() {
 
     sel.onchange = () => renderFormulario(sel.value);
 }
-
-
 
 function montarSublocaisFiltrados(localEscolhido) {
     const selSub = document.getElementById("sublocal_select");
@@ -307,7 +328,7 @@ function montarSublocaisFiltrados(localEscolhido) {
 };
 }
 // ============================================================
-// 7. IMAGEM DE APOIO (PGE)
+// 8. IMAGEM DE APOIO (PGE)
 // ============================================================
 
 function exibirImagemApoioSublocal(sublocal) {
@@ -380,7 +401,7 @@ function exibirImagemApoioSublocal(sublocal) {
 }
 
 // ============================================================
-// 8. RENDERIZAÇÃO DO FORMULÁRIO
+// 9. RENDERIZAÇÃO DO FORMULÁRIO
 // ============================================================
 
 function renderFormulario(secaoFiltrada = null) {
