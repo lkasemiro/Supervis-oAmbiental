@@ -385,19 +385,16 @@ function renderFormulario(secaoFiltrada = null) {
     const container = document.getElementById("conteudo_formulario");
     if (!container) return;
 
-    // 1. Em vez de limpar TUDO, removemos apenas as perguntas (as divs de grupo)
-    // Isso preserva o "container_imagem_apoio_sublocal" se ele já estiver lá
+    // Remove apenas as perguntas mantendo imagens de apoio
     const gruposAntigos = container.querySelectorAll('[id^="group_"]');
     gruposAntigos.forEach(el => el.remove());
 
-    // Se o container estiver com a mensagem de "selecione sublocal", limpamos ela
     if (container.innerText.includes("Selecione um sublocal")) {
         container.innerHTML = "";
     }
 
     let perguntas = APP_STATE.roteiro;
     
-    // Limpeza de imagem se mudar de roteiro
     if (APP_STATE.tipoRoteiro !== "pge") {
         const img = document.getElementById("container_imagem_apoio_sublocal");
         if (img) img.remove();
@@ -406,7 +403,7 @@ function renderFormulario(secaoFiltrada = null) {
     if (APP_STATE.tipoRoteiro === "pge") {
         const sub = document.getElementById("sublocal_select").value;
         if (!sub) {
-            container.innerHTML = `<div class="text-center p-10 text-gray-400 italic">Selecione um sublocal.</div>`;
+            container.innerHTML = `<div class="text-center p-12 text-slate-400 italic bg-slate-50 rounded-[2rem] border-2 border-dashed border-slate-200">Selecione um sublocal para carregar as perguntas.</div>`;
             return;
         }
         perguntas = perguntas.filter(p => p.Local === APP_STATE.local && p.Sublocal === sub);
@@ -416,87 +413,118 @@ function renderFormulario(secaoFiltrada = null) {
         perguntas = perguntas.filter(p => (p.Secao || p["Seção"]) === secaoFiltrada);
     }
 
-    // 2. Adiciona as perguntas sem resetar o innerHTML do container pai
     perguntas.forEach(p => {
         const div = document.createElement("div");
         div.id = `group_${p.id}`;
-        div.className = "bg-white p-6 rounded-2xl shadow-sm border border-gray-100 mb-4 animate-in";
+        // Novo Design: Card robusto com borda sutil e espaçamento interno maior
+        div.className = "bg-white p-7 rounded-[2rem] shadow-sm border border-slate-100 mb-6 animate-in transition-all";
         
         const valorSalvo = APP_STATE.respostas[APP_STATE.tipoRoteiro]?.[p.id] ?? "";
 
         div.innerHTML = `
-            <label class="block font-bold text-gray-800 mb-3">${p.Pergunta}</label>
-            <div id="input-root-${p.id}"></div>
+            <label class="block font-black text-slate-700 text-[13px] uppercase tracking-tight mb-5 leading-tight">
+                <span class="text-[#0067ac] mr-1">●</span> ${p.Pergunta}
+            </label>
+            <div id="input-root-${p.id}" class="space-y-3"></div>
         `;
-        container.appendChild(div); // Usa appendChild para colocar DEPOIS da imagem
+        container.appendChild(div);
         renderInput(p, document.getElementById(`input-root-${p.id}`), valorSalvo); 
     });
 
-    applyConditionalLogic();
+    if (typeof applyConditionalLogic === "function") applyConditionalLogic();
 }
-
 // ============================================================
 // 9. INPUTS
 // ============================================================
 function renderInput(p, container, valorSalvo) {
     const tipoInput = p.TipoInput; 
-    container.innerHTML = ""; // Limpa container interno
+    container.innerHTML = "";
 
     if (tipoInput === "text" || tipoInput === "textarea") {
         const input = document.createElement(tipoInput === "text" ? "input" : "textarea");
-        input.className = "w-full border border-gray-200 rounded-xl p-3 text-sm focus:ring-2 focus:ring-blue-500 outline-none";
-        input.value = valorSalvo || ""; // Garante que não seja undefined
+        // Input estilo 'Industrial': fundo cinza claro, borda foca em azul
+        input.className = "w-full bg-slate-50 border-2 border-slate-100 rounded-2xl p-4 text-sm font-medium focus:bg-white focus:border-[#0067ac]/30 focus:ring-4 focus:ring-blue-500/5 outline-none transition-all";
+        input.value = valorSalvo || "";
+        input.placeholder = "Digite aqui...";
         input.oninput = (e) => registrarResposta(p.id, e.target.value);
         container.appendChild(input);
 
-    } else if (tipoInput === "radio") {
+    } else if (tipoInput === "radio" || tipoInput === "checkboxGroup") {
         const opcoes = (p.Opcoes || "").split(";").filter(Boolean);
-        opcoes.forEach(opt => {
+        const marcados = tipoInput === "checkboxGroup" ? (valorSalvo || "").split(";").map(v => v.trim()) : [valorSalvo];
+        
+        // Grid de 2 colunas se houver poucas opções (ex: Sim/Não)
+        const gridClass = opcoes.length <= 3 ? "grid grid-cols-1 gap-3" : "space-y-3";
+        container.className = gridClass;
+
+      opcoes.forEach(opt => {
             const optTrim = opt.trim();
-            const checked = valorSalvo === optTrim ? "checked" : "";
+            const isChecked = marcados.includes(optTrim);
+            const inputType = tipoInput === "radio" ? "radio" : "checkbox";
+            
             const label = document.createElement("label");
-            label.className = "flex items-center gap-3 p-3 border rounded-xl mb-2 hover:bg-gray-50 cursor-pointer";
+            // Função interna para atualizar as cores dos cards sem dar scroll
+            const atualizarEstiloCard = (el, active) => {
+                if (active) {
+                    el.classList.add("border-[#0067ac]", "bg-blue-50/50", "shadow-inner");
+                    el.classList.remove("border-slate-50", "bg-slate-50/50");
+                } else {
+                    el.classList.remove("border-[#0067ac]", "bg-blue-50/50", "shadow-inner");
+                    el.classList.add("border-slate-50", "bg-slate-50/50");
+                }
+            };
+
+            label.className = `flex items-center gap-4 p-4 border-2 rounded-2xl cursor-pointer transition-all active:scale-95 ${
+                isChecked ? "border-[#0067ac] bg-blue-50/50 shadow-inner" : "border-slate-50 bg-slate-50/50 hover:bg-slate-100"
+            }`;
+            
             label.innerHTML = `
-                <input type="radio" name="${p.id}" value="${optTrim}" ${checked} 
-                       onchange="registrarResposta('${p.id}', '${optTrim}')" class="w-5 h-5 text-blue-600">
-                <span class="text-sm font-medium text-gray-700">${optTrim}</span>
+                <div class="relative flex items-center justify-center pointer-events-none">
+                    <input type="${inputType}" name="${p.id}" value="${optTrim}" ${isChecked ? "checked" : ""} 
+                        class="w-6 h-6 border-2 border-slate-300 ${tipoInput === 'radio' ? 'rounded-full' : 'rounded'} text-[#0067ac] focus:ring-0 checked:border-[#0067ac] transition-all">
+                </div>
+                <span class="text-sm font-bold ${isChecked ? 'text-[#0067ac]' : 'text-slate-600'} pointer-events-none">${optTrim}</span>
             `;
+
+            label.onclick = (e) => {
+                const input = label.querySelector('input');
+                
+                if (tipoInput === "radio") {
+                    // Limpa estilo de todos os outros labels do mesmo grupo
+                    container.querySelectorAll('label').forEach(l => atualizarEstiloCard(l, false));
+                    atualizarEstiloCard(label, true);
+                    input.checked = true;
+                    registrarResposta(p.id, optTrim);
+                } else {
+                    // Lógica para Checkbox
+                    input.checked = !input.checked;
+                    atualizarEstiloCard(label, input.checked);
+                    gerenciarMudancaCheckbox(p.id);
+                }
+                
+                // Dispara a lógica condicional (ex: mostrar campo de foto) sem dar re-render
+                if (typeof applyConditionalLogic === "function") applyConditionalLogic();
+            };
+
             container.appendChild(label);
         });
 
-    } else if (tipoInput === "checkboxGroup") {
-        const opcoes = (p.Opcoes || "").split(";").filter(Boolean);
-        const marcados = (valorSalvo || "").split(";").map(v => v.trim());
-        
-        opcoes.forEach(opt => {
-            const optTrim = opt.trim();
-            const isChecked = marcados.includes(optTrim) ? "checked" : "";
-            const label = document.createElement("label");
-            label.className = "flex items-center gap-3 p-3 border rounded-xl mb-2 hover:bg-gray-50 cursor-pointer";
-            label.innerHTML = `
-                <input type="checkbox" name="${p.id}" value="${optTrim}" ${isChecked} 
-                       onchange="gerenciarMudancaCheckbox('${p.id}')" class="w-5 h-5 text-green-600 rounded">
-                <span class="text-sm font-medium text-gray-700">${optTrim}</span>
-            `;
-            container.appendChild(label);
-        }); 
-
     } else if (tipoInput === "file") {
         container.innerHTML = `
-            <div class="space-y-3">
+            <div class="space-y-4">
                 <button type="button" onclick="abrirCamera('${p.id}')" 
-                    class="w-full bg-amber-500 hover:bg-amber-600 text-white py-4 rounded-2xl font-bold flex items-center justify-center gap-2 transition-all active:scale-95 shadow-sm">
-                    <span>📷</span> Capturar Foto
+                    class="w-full bg-slate-800 hover:bg-black text-white py-5 rounded-2xl font-black text-xs uppercase tracking-widest flex items-center justify-center gap-3 transition-all active:scale-95 shadow-lg shadow-slate-200">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 13a3 3 0 11-6 0 3 3 0 016 0z"></path></svg>
+                    Anexar Evidência
                 </button>
-                <div id="fotos_${p.id}" class="grid grid-cols-4 gap-2 empty:hidden"></div>
+                <div id="fotos_${p.id}" class="grid grid-cols-3 gap-3 empty:hidden"></div>
             </div>
         `;
         if (typeof atualizarListaFotos === "function") {
-            atualizarListaFotos(p.id);
+            setTimeout(() => atualizarListaFotos(p.id), 50);
         }
     }
 }
-
 function gerenciarMudancaCheckbox(idPergunta) {
     const checkboxes = document.querySelectorAll(`input[name="${idPergunta}"]:checked`);
     const valores = Array.from(checkboxes).map(cb => cb.value.trim());
@@ -864,50 +892,54 @@ async function sincronizarVisitasPendentes() {
 window.addEventListener('online', sincronizarVisitasPendentes);
 // CONFIRMAR NOVA VISTORIA
 async function confirmarNovaVistoria() {
-    if (!confirm("Deseja salvar esta vistoria na fila e iniciar uma nova?")) return;
+    if (!confirm("Deseja arquivar esta vistoria e iniciar uma nova?")) return;
 
     try {
+        // 1. Abrir o banco manualmente aqui para garantir conexão ativa
         const db = await DB_API.openDB();
         
-        // Garante que temos um ID antes de começar a transação
-        const idFinal = APP_STATE.id_visita || localStorage.getItem("id_visita") || `VIST_${Date.now()}`;
-        
-        const tx = db.transaction(["vistorias"], "readwrite");
-        const store = tx.objectStore("vistorias");
-        
-        const objetoParaSalvar = {
-            id_vistoria: idFinal,
-            avaliador: APP_STATE.avaliador || "Não Informado",
-            local: APP_STATE.local || "Não Informado",
+        // 2. Capturar o ID de forma ultra-segura
+        const idAtual = APP_STATE.id_visita || localStorage.getItem("id_visita") || `VIST_${Date.now()}`;
+
+        // 3. Criar o pacote de dados "limpo" (sem funções ou lixo do JS)
+        const pacoteParaArquivar = {
+            id_vistoria: String(idAtual),
+            avaliador: String(APP_STATE.avaliador || "Não Informado"),
+            local: String(APP_STATE.local || "Não Informado"),
             data: APP_STATE.data || new Date().toISOString().split('T')[0],
-            tipoRoteiro: APP_STATE.tipoRoteiro,
-            dados: JSON.parse(JSON.stringify(APP_STATE)), 
+            dados: JSON.parse(JSON.stringify(APP_STATE)), // "Congela" o estado atual
             sincronizado: false,
             timestamp: Date.now()
         };
 
-        const request = store.put(objetoParaSalvar);
+        const tx = db.transaction(["vistorias"], "readwrite");
+        const store = tx.objectStore("vistorias");
+        
+        // 4. Tentar o salvamento
+        const request = store.put(pacoteParaArquivar);
 
         request.onsuccess = () => {
-            console.log("✅ Vistoria arquivada com sucesso.");
+            console.log("✅ Vistoria salva no histórico local com sucesso!");
         };
 
         tx.oncomplete = () => {
-            const avaliadorAntigo = APP_STATE.avaliador;
+            // SÓ LIMPA TUDO APÓS O SUCESSO DO BANCO
+            const avaliadorOld = APP_STATE.avaliador;
             localStorage.clear();
-            // Preserva apenas o essencial para a próxima rodada
-            if (avaliadorAntigo) localStorage.setItem("avaliador", avaliadorAntigo);
+            if (avaliadorOld) localStorage.setItem("avaliador", avaliadorOld);
+            
+            alert("Vistoria arquivada! Iniciando novo formulário...");
             location.reload(); 
         };
 
         tx.onerror = (e) => {
             console.error("Erro na transação:", e.target.error);
-            alert("Erro no banco: " + e.target.error);
+            throw new Error("Erro no IndexedDB: " + e.target.error);
         };
 
     } catch (err) {
         console.error("Erro ao arquivar:", err);
-        alert("Erro crítico ao salvar! Verifique se o ID da visita existe.");
+        alert("ERRO CRÍTICO: Não foi possível salvar no histórico. Verifique o Console.");
     }
 }
 window.savePhotoToDB = async (fotoId, blob, idPergunta, base64) => {
