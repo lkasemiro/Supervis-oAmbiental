@@ -903,45 +903,72 @@ function marcarComoConcluidoUI(metodo) {
 
 async function sincronizarComBanco() {
     const btn = document.getElementById('btn-sync');
-    if(btn) btn.innerText = "ENVIANDO...";
+    const syncText = document.getElementById('sync-text');
+    const spinner = document.getElementById('sync-spinner');
+
+    if (!navigator.onLine) {
+        alert("Você está offline. Conecte-se à internet para enviar.");
+        return;
+    }
+
+    if(syncText) syncText.innerText = "ENVIANDO...";
+    if(spinner) spinner.classList.remove('hidden');
 
     try {
         const db = await DB_API.openDB();
+        
+        // Pegamos TODAS as vistorias do banco local
         const vistorias = await new Promise((res) => {
             const tx = db.transaction("vistorias", "readonly");
             tx.objectStore("vistorias").getAll().onsuccess = (e) => res(e.target.result);
         });
 
-        // Filtra apenas a vistoria atual que não foi sincronizada
+        // Filtra apenas a vistoria que estamos vendo agora e que ainda não subiu
         const pendentes = vistorias.filter(v => v.id_vistoria === APP_STATE.id_vistoria && !v.sincronizado);
 
+        if (pendentes.length === 0) {
+            alert("Esta vistoria já foi enviada ou não foi encontrada.");
+            return;
+        }
+
         for (const visita of pendentes) {
-            const res = await fetch('https://strapless-christi-unspread.ngrok-free.dev/vistorias/sincronizar', {
+            // Buscamos as fotos vinculadas a esta visita específica no banco de fotos
+            const todasFotos = await new Promise((res) => {
+                const tx = db.transaction("fotos", "readonly");
+                tx.objectStore("fotos").getAll().onsuccess = (e) => res(e.target.result);
+            });
+            
+            const fotosDaVisita = todasFotos.filter(f => f.id_visita === visita.id_vistoria);
+            
+            // Montamos o pacote completo (Dados + Fotos)
+            const pacoteCompleto = { ...visita, fotos_base64: fotosDaVisita };
+
+            const response = await fetch('https://strapless-christi-unspread.ngrok-free.dev/vistorias/sincronizar', {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify(visita)
+                body: JSON.stringify(pacoteCompleto)
             });
 
-            if (res.ok) {
-                const resposta = await res.json();
-                if (resposta.status === "sucesso") {
-                    visita.sincronizado = true;
-                    const txUp = db.transaction("vistorias", "readwrite");
-                    await txUp.objectStore("vistorias").put(visita);
-                    
-                    // ACIONA O VERDE
-                    marcarComoConcluidoUI('sync');
-                }
+            if (response.ok) {
+                // Marcar como sincronizado no banco local para não enviar duplicado depois
+                visita.sincronizado = 1;
+                const txUp = db.transaction("vistorias", "readwrite");
+                await txUp.objectStore("vistorias").put(visita);
+                
+                marcarComoConcluidoUI('sync');
+                alert("Sucesso! Vistoria enviada ao servidor da CEDAE.");
+            } else {
+                throw new Error("Servidor respondeu com erro.");
             }
         }
     } catch (err) {
-        console.error(err);
-        alert("Erro na conexão com o servidor.");
+        console.error("Erro na sincronização:", err);
+        alert("Falha na conexão: Verifique se o servidor backend está ligado e o ngrok ativo.");
     } finally {
-        if(btn) btn.innerText = "ENVIAR PARA O SERVIDOR";
+        if(syncText) syncText.innerText = "ENVIAR AO SERVIDOR";
+        if(spinner) spinner.classList.add('hidden');
     }
 }
-
 // ============================================================
 // 16. SINCRONIZAÇÃO AUTOMÁTICA AO VOLTAR ONLINE
 // ============================================================
@@ -1004,18 +1031,19 @@ function confirmarNovaVistoria() {
 }
 // --- FINALIZAÇÃO E ARQUIVAMENTO (SUA FUNÇÃO MELHORADA) ---
 async function confirmarNovaVistoria() {
+    if (!confirm("Deseja arquivar esta vistoria e iniciar uma nova? Os dados salvos localmente continuarão no histórico.")) return;
+
     const circle = document.getElementById('status-icon-circle');
     const symbol = document.getElementById('status-icon-symbol');
     
-    if (!confirm("Deseja arquivar esta vistoria e iniciar uma nova?")) return;
-
     if(circle) circle.className = "w-20 h-20 bg-amber-100 text-amber-600 rounded-full flex items-center justify-center mx-auto mb-4";
     if(symbol) symbol.innerText = "⏳";
 
     try {
         const db = await DB_API.openDB();
-        const idAtual = APP_STATE.id_visita || APP_STATE.id_vistoria || `VIST_${Date.now()}`;
+        const idAtual = APP_STATE.id_vistoria || `VIST_${Date.now()}`;
 
+        // Criamos o registro histórico antes de limpar o rascunho
         const pacoteParaArquivar = {
             id_vistoria: String(idAtual),
             avaliador: String(APP_STATE.avaliador || "Não Informado"),
@@ -1034,7 +1062,9 @@ async function confirmarNovaVistoria() {
 
         tx.oncomplete = () => {
             const avaliadorOld = APP_STATE.avaliador;
+            // Limpa rascunhos de navegação
             ["id_visita", "id_vistoria", "APP_META"].forEach(k => localStorage.removeItem(k));
+            // Preserva o nome do avaliador para facilitar a próxima
             if (avaliadorOld) localStorage.setItem("avaliador", avaliadorOld);
             
             alert("Vistoria arquivada com sucesso!");
@@ -1042,7 +1072,7 @@ async function confirmarNovaVistoria() {
         };
     } catch (err) {
         console.error("Erro ao arquivar:", err);
-        alert("ERRO CRÍTICO: Não foi possível salvar no histórico.");
+        alert("ERRO: Não foi possível salvar no histórico local.");
     }
 }
 window.savePhotoToDB = async (fotoId, blob, idPergunta, base64) => {
