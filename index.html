@@ -9,7 +9,6 @@
     <meta name="mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <link rel="apple-touch-icon" href="icon.png">
-    <link rel="icon" type="image/png" href="icon.png">
     <link rel="manifest" href="manifest.json">
 
     <script src="https://cdn.tailwindcss.com"></script>
@@ -18,145 +17,165 @@
     <link rel="stylesheet" href="style.css">
 
     <style>
-        .animate-in { animation: fadeIn 0.3s ease-out; }
-        @keyframes fadeIn {
-            from { opacity: 0; transform: translateY(10px); }
-            to { opacity: 1; transform: translateY(0); }
-        }
-        #connection-banner { transition: all 0.5s ease; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+        :root { --blue-cedae: #0067ac; --green-cedae: #10b981; }
+        body { font-family: sans-serif; margin: 0; padding-top: 25px; background: #f9fafb; }
+        section { padding: 15px; }
+        .hidden { display: none !important; }
         
-        /* Prevenção de quebra de layout no iOS */
-        input[type="text"], input[type="date"], select { font-size: 16px !important; } 
+        /* Botões Grandes para Dedos em Campo (Acessibilidade) */
+        button { 
+            min-height: 55px; 
+            font-size: 16px; 
+            font-weight: bold; 
+            cursor: pointer; 
+            border-radius: 12px;
+            border: none;
+            width: 100%;
+            margin-bottom: 10px;
+        }
+
+        /* Garantia de leitura em qualquer tela */
+        input, select { 
+            font-size: 16px !important; /* Impede zoom no iPhone */
+            padding: 12px;
+            width: 100%;
+            border: 2px solid #e5e7eb;
+            border-radius: 12px;
+            box-sizing: border-box;
+        }
+
+        .animate-in { animation: fadeIn 0.3s ease-out; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+        
+        #connection-banner { transition: all 0.5s ease; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
     </style>
 </head>
 
-<body class="bg-white text-gray-900 font-sans antialiased overflow-x-hidden">
+<body class="bg-gray-50 text-gray-900 font-sans antialiased overflow-x-hidden">
 
     <input type="file" id="camera-input" accept="image/*" capture="environment" class="hidden">
 
-    <div id="connection-banner" class="fixed top-0 left-0 right-0 z-[100] text-center py-1 text-[10px] font-bold uppercase tracking-widest bg-gray-500 text-white">
-        <span id="connection-text">Verificando sistema...</span>
+    <div id="connection-banner" class="fixed top-0 left-0 right-0 z-[100] text-center py-1 text-[10px] font-black uppercase tracking-widest bg-gray-500 text-white">
+        <span id="connection-text">Verificando internet...</span>
     </div>
 
-    <div id="status-sinc" class="fixed bottom-2 right-2 text-[10px] bg-white/90 backdrop-blur p-2 rounded-lg border shadow-sm z-50 font-mono">
-        Status: Inicializando...
+    <div id="status-sinc" class="fixed bottom-2 right-2 text-[9px] bg-white/90 backdrop-blur px-2 py-1 rounded border shadow-sm z-50 font-mono text-gray-400">
+        Aguardando...
     </div>
 
-    <section id="screen-cadastro" class="max-w-2xl mx-auto p-4 min-h-screen flex flex-col justify-center pt-10">
-        <div class="text-center mb-8">
-            <img src="icon.png" class="h-20 w-full object-contain mx-auto mb-4" alt="Logo CEDAE">
-            <h1 class="text-2xl font-black text-[#0067ac] tracking-tight">Vistoria Técnica</h1>
-            <p class="text-[#0067ac] uppercase tracking-[0.2em] text-[10px] font-bold opacity-70">Supervisão Ambiental</p>
+    <section id="screen-cadastro" class="max-w-2xl mx-auto min-h-screen flex flex-col justify-center animate-in">
+        <div class="text-center mb-6">
+            <img src="icon.png" class="h-16 w-full object-contain mx-auto mb-2" alt="CEDAE">
+            <h1 class="text-2xl font-black text-[#0067ac] leading-tight">VISTORIA TÉCNICA</h1>
+            <p class="text-[#0067ac] uppercase tracking-widest text-[10px] font-bold">Supervisão Ambiental</p>
         </div>
 
-        <div class="bg-white p-6 md:p-8 rounded-[2.5rem] shadow-2xl border border-gray-50">
+        <div class="bg-white p-6 rounded-[2rem] shadow-xl border border-gray-100">
             <div class="space-y-4">
                 <div>
-                    <label class="block text-[10px] font-black text-gray-400 uppercase mb-1 ml-2">Avaliador</label>
-                    <input id="avaliador" type="text" placeholder="Nome Completo" class="w-full p-4 bg-gray-50 rounded-2xl border-2 border-transparent focus:border-blue-500 focus:bg-white transition-all outline-none">
+                    <label class="block text-[10px] font-black text-gray-400 uppercase mb-1 ml-2">Quem está avaliando?</label>
+                    <input id="avaliador" type="text" placeholder="Digite seu nome completo" class="bg-gray-50">
                 </div>
 
                 <div>
                     <label class="block text-[10px] font-black text-gray-400 uppercase mb-1 ml-2">Local da Unidade</label>
-                    <select id="local" class="w-full p-4 bg-gray-50 border-2 border-transparent rounded-2xl focus:border-blue-500 focus:bg-white outline-none appearance-none"></select>
+                    <select id="local" class="bg-gray-50"></select>
                 </div>
 
-                <div class="grid grid-cols-2 gap-4">
+                <div class="grid grid-cols-2 gap-3">
                     <div>
-                        <label class="block text-[10px] font-black text-gray-400 uppercase mb-1 ml-2">Data</label>
-                        <input id="data_visita" type="date" class="w-full p-4 bg-gray-50 rounded-2xl border-2 border-transparent outline-none">
+                        <label class="block text-[10px] font-black text-gray-400 uppercase mb-1 ml-2">Data de Hoje</label>
+                        <input id="data_visita" type="date" class="bg-gray-50 text-sm">
                     </div>
                     <div>
                         <label class="block text-[10px] font-black text-gray-400 uppercase mb-1 ml-2">Acompanhante</label>
-                        <input id="colaborador" type="text" placeholder="Opcional" class="w-full p-4 bg-gray-50 rounded-2xl border-2 border-transparent outline-none">
+                        <input id="colaborador" type="text" placeholder="Nome (se houver)" class="bg-gray-50 text-sm">
                     </div>
                 </div>
 
-                <button onclick="validarEComecar()" class="w-full bg-[#0067ac] text-white py-5 rounded-2xl font-black transition-all active:scale-95 shadow-lg mt-4 uppercase tracking-widest text-sm">
-                    Iniciar Vistoria
+                <button onclick="validarEComecar()" class="bg-[#0067ac] text-white shadow-blue-200 shadow-lg active:scale-95 transition-all mt-4">
+                    COMEÇAR AGORA
                 </button>
             </div>
         </div>
     </section>
 
-    <section id="screen-select-roteiro" class="max-w-xl mx-auto p-6 hidden min-h-screen flex flex-col justify-center space-y-4">
-        <h2 class="text-[#0067ac] uppercase tracking-tighter text-2xl font-black text-center mb-6">Escolha o Roteiro</h2>
+    <section id="screen-select-roteiro" class="max-w-xl mx-auto hidden min-h-screen flex flex-col justify-center space-y-4">
+        <h2 class="text-[#0067ac] font-black text-center text-xl mb-4">O QUE VOCÊ VAI AVALIAR?</h2>
 
-        <button onclick="selectRoteiro('geral')" class="p-6 bg-white rounded-3xl shadow-md border-l-8 border-[#0067ac] text-[#0067ac] font-bold flex justify-between items-center active:scale-95 transition-transform">
-            <div class="text-left">
-                <p class="text-xs opacity-50 uppercase">Padrão</p>
-                <p class="text-lg">FORMULÁRIO GERAL</p>
+        <button onclick="selectRoteiro('geral')" class="p-5 bg-white shadow-md border-l-[10px] border-[#0067ac] text-[#0067ac] flex justify-between items-center text-left">
+            <div>
+                <span class="text-xs font-bold opacity-60">OPÇÃO 1</span>
+                <p class="text-lg leading-tight">FORMULÁRIO GERAL</p>
             </div>
-            <span class="bg-blue-50 p-2 rounded-full">→</span>
+            <span class="text-2xl">📋</span>
         </button>
 
-        <button onclick="selectRoteiro('pge')" class="p-6 bg-white rounded-3xl shadow-md border-l-8 border-orange-500 text-orange-600 font-bold flex justify-between items-center active:scale-95 transition-transform">
-            <div class="text-left">
-                <p class="text-xs opacity-50 uppercase">Efluentes</p>
-                <p class="text-lg">PGE – GERENCIAMENTO</p>
+        <button onclick="selectRoteiro('pge')" class="p-5 bg-white shadow-md border-l-[10px] border-orange-500 text-orange-700 flex justify-between items-center text-left">
+            <div>
+                <span class="text-xs font-bold opacity-60">OPÇÃO 2</span>
+                <p class="text-lg leading-tight">EFLUENTES (PGE)</p>
             </div>
-            <span class="bg-orange-50 p-2 rounded-full">→</span>
+            <span class="text-2xl">💧</span>
         </button>
 
-        <button onclick="selectRoteiro('aa')" class="p-6 bg-white rounded-3xl shadow-md border-l-8 border-red-500 text-red-600 font-bold flex justify-between items-center active:scale-95 transition-transform">
-            <div class="text-left">
-                <p class="text-xs opacity-50 uppercase">Emergência</p>
-                <p class="text-lg">ACIDENTES AMBIENTAIS</p>
+        <button onclick="selectRoteiro('aa')" class="p-5 bg-white shadow-md border-l-[10px] border-red-500 text-red-700 flex justify-between items-center text-left">
+            <div>
+                <span class="text-xs font-bold opacity-60">OPÇÃO 3</span>
+                <p class="text-lg leading-tight">ACIDENTES AMBIENTAIS</p>
             </div>
-            <span class="bg-red-50 p-2 rounded-full">→</span>
+            <span class="text-2xl">⚠️</span>
         </button>
     </section>
 
-    <section id="screen-formulario" class="max-w-3xl mx-auto p-4 hidden pb-40">
-        <div class="sticky top-6 bg-white/95 backdrop-blur-md z-40 border shadow-xl mb-6 p-4 rounded-3xl">
-            <div class="flex justify-between items-center mb-4">
-                <button onclick="showScreen('screen-select-roteiro')" class="bg-gray-100 px-4 py-2 rounded-full text-gray-600 font-bold text-xs">
-                    ← Voltar
+    <section id="screen-formulario" class="max-w-3xl mx-auto hidden pb-40">
+        <div class="sticky top-4 bg-white/95 backdrop-blur-md z-40 border shadow-lg mb-6 p-4 rounded-3xl">
+            <div class="flex justify-between items-center mb-3">
+                <button onclick="showScreen('screen-select-roteiro')" class="bg-gray-100 !min-h-0 py-2 px-4 rounded-full text-gray-500 text-xs w-auto">
+                    ← Mudar Roteiro
                 </button>
-                <span id="roteiro-atual-label" class="text-[10px] font-black bg-blue-100 text-blue-600 px-3 py-1 rounded-full uppercase">ROTEIRO</span>
+                <span id="roteiro-atual-label" class="text-[9px] font-black bg-blue-100 text-blue-700 px-3 py-1 rounded-full uppercase">CARREGANDO...</span>
             </div>
 
             <div id="sublocal_box" class="hidden mb-2">
-                <select id="sublocal_select" class="w-full p-3 border-2 border-blue-50 rounded-xl bg-blue-50/50 font-bold text-[#0067ac] outline-none"></select>
+                <select id="sublocal_select" class="border-blue-200 bg-blue-50/50 font-bold text-[#0067ac]"></select>
             </div>
 
             <div id="secao_box">
-                <select id="secao_select" class="w-full p-3 border-2 border-gray-100 rounded-xl bg-gray-50 font-bold text-gray-700 outline-none"></select>
+                <select id="secao_select" class="border-gray-200 font-bold text-gray-600"></select>
             </div>
         </div>
 
         <div id="conteudo_formulario" class="space-y-6 animate-in"></div>
 
-        <div class="fixed bottom-0 left-0 right-0 p-6 bg-gradient-to-t from-white via-white to-transparent z-50">
-            <button onclick="showScreen('screen-final')" class="w-full bg-green-600 text-white py-5 rounded-2xl font-black shadow-2xl shadow-green-200 active:scale-95 transition-transform">
+        <div class="fixed bottom-0 left-0 right-0 p-4 bg-gradient-to-t from-white via-white to-transparent z-50">
+            <button onclick="showScreen('screen-final')" class="bg-green-600 text-white shadow-xl active:scale-95">
                 CONCLUIR VISTORIA
             </button>
         </div>
     </section>
 
-    <section id="screen-final" class="max-w-xl mx-auto p-8 hidden min-h-screen flex flex-col justify-center text-center">
-        <div class="bg-white p-10 rounded-[3rem] shadow-2xl border border-gray-50">
-            <div class="w-24 h-24 bg-green-100 text-green-600 rounded-full flex items-center justify-center mx-auto mb-6">
-                <svg xmlns="http://www.w3.org/2000/svg" class="h-12 w-12" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7" />
-                </svg>
+    <section id="screen-final" class="max-w-xl mx-auto hidden min-h-screen flex flex-col justify-center text-center">
+        <div class="bg-white p-8 rounded-[3rem] shadow-2xl border border-gray-50">
+            <div class="w-20 h-20 bg-green-100 text-green-600 rounded-full flex items-center justify-center mx-auto mb-4">
+                <span class="text-4xl">✓</span>
             </div>
-            <h2 class="text-3xl font-black text-gray-800 mb-2">PRONTO!</h2>
-            <p class="text-gray-400 text-sm mb-8 font-medium">Dados armazenados localmente com sucesso.</p>
+            <h2 class="text-2xl font-black text-gray-800 mb-1">TUDO PRONTO!</h2>
+            <p class="text-gray-400 text-xs mb-8">Os dados foram salvos no seu celular.</p>
 
-            <div class="space-y-4">
-                <button onclick="sincronizarComBanco()" id="btn-sync" class="w-full bg-[#0067ac] text-white py-5 rounded-2xl font-black shadow-lg flex items-center justify-center gap-3">
-                    <span>☁️</span> SINCRONIZAR COM SERVIDOR
+            <div class="space-y-3">
+                <button onclick="sincronizarComBanco()" id="btn-sync" class="bg-[#0067ac] text-white flex items-center justify-center gap-2">
+                    ENVIAR PARA O SERVIDOR ☁️
                 </button>
                 
-                <button onclick="baixarExcelConsolidado()" class="w-full bg-emerald-600 text-white py-5 rounded-2xl font-black shadow-lg flex items-center justify-center gap-3">
-                    <span>📊</span> GERAR RELATÓRIO EXCEL
+                <button onclick="baixarExcelConsolidado()" class="bg-emerald-600 text-white flex items-center justify-center gap-2">
+                    BAIXAR PLANILHA EXCEL 📊
                 </button>
 
-                <div class="pt-6 border-t mt-6 space-y-4">
-                    <button onclick="showScreen('screen-select-roteiro')" class="text-blue-600 font-bold text-sm underline">Editar ou revisar respostas</button>
-                    <button onclick="confirmarNovaVistoria()" class="w-full bg-red-50 text-red-500 py-4 rounded-2xl font-black text-xs uppercase tracking-widest border border-red-100">
-                        Descartar e Iniciar Nova
+                <div class="pt-6 border-t mt-4 space-y-2">
+                    <button onclick="showScreen('screen-select-roteiro')" class="!bg-transparent text-blue-600 !min-h-0 text-sm">Voltar e Corrigir</button>
+                    <button onclick="confirmarNovaVistoria()" class="bg-gray-100 text-gray-500 !text-xs uppercase tracking-widest">
+                        Arquivar e Iniciar Nova
                     </button>
                 </div>
             </div>
@@ -168,15 +187,16 @@
     <script src="app.js"></script>
 
     <script>
+        // Banner intuitivo para o funcionário em campo
         function atualizarBannerRede() {
             const banner = document.getElementById('connection-banner');
             const texto = document.getElementById('connection-text');
             if (navigator.onLine) {
-                banner.className = "fixed top-0 left-0 right-0 z-[100] text-center py-1 text-[10px] font-bold uppercase tracking-widest bg-green-600 text-white shadow-md";
-                texto.innerText = "● Sistema Online - Nuvem Ativa";
+                banner.className = "fixed top-0 left-0 right-0 z-[100] text-center py-1 text-[10px] font-black uppercase tracking-widest bg-green-600 text-white";
+                texto.innerText = "● CONECTADO - Sincronização Liberada";
             } else {
-                banner.className = "fixed top-0 left-0 right-0 z-[100] text-center py-1 text-[10px] font-bold uppercase tracking-widest bg-amber-500 text-white shadow-md";
-                texto.innerText = "○ Modo Offline - Salvando no Aparelho";
+                banner.className = "fixed top-0 left-0 right-0 z-[100] text-center py-1 text-[10px] font-black uppercase tracking-widest bg-amber-500 text-white";
+                texto.innerText = "○ SEM INTERNET - Salvando no Celular";
             }
         }
         window.addEventListener('online', atualizarBannerRede);
