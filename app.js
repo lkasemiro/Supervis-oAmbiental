@@ -1,7 +1,12 @@
 /// ============================================================
 // APP.JS – VERSÃO INTEGRAL CORRIGIDA (ORGANIZADA POR FLUXO)
 // ============================================================
-
+// ============================================================
+document.addEventListener("DOMContentLoaded", initApp);
+window.onerror = function (msg, url, line) {
+alert("ERRO GLOBAL: " + msg + "\nLinha: " + line);
+};
+document.getElementById('status-sinc').innerText = "Sincronizando..."
 // ============================================================
 // 1. CONSTANTES E ESTADO GLOBAL
 // ============================================================
@@ -14,39 +19,28 @@ const LOCAIS_VISITA = [
 ];
 
 let APP_STATE = {
-    avaliador: "",
-    local: "",
-    colaborador: "",
-    data: "",
-    tipoRoteiro: null,
-    sublocal: "",
-    roteiro: [],
-    respostas: {
-        geral: {},
-        pge: {},
-        aa: {}
-    },
-    fotos: {}
+avaliador: "",
+colaborador: "",
+local: "",
+data: "",
+tipoRoteiro: null,
+sublocal: "",
+roteiro: [],
+respostas: { geral: {}, pge: {}, aa: {} },
+id_vistoria: null
 };
 
 let stream = null;
 let currentPhotoInputId = null;
 
-
-window.onerror = function(msg, url, line) {
-    alert("ERRO GLOBAL: " + msg + "\nLinha: " + line);
-};
 // ============================================================
 // 2. CONTROLE DE TELAS E NAVEGAÇÃO
 // ============================================================
 
 function showScreen(id) {
-    const telas = ["screen-cadastro", "screen-select-roteiro", "screen-formulario", "screen-final"];
-    telas.forEach(t => {
-        const el = document.getElementById(t);
-        if (el) el.classList.toggle("hidden", t !== id);
-    });
-    window.scrollTo(0, 0);
+["screen-cadastro", "screen-select-roteiro", "screen-formulario", "screen-final"]
+.forEach(t => document.getElementById(t)?.classList.toggle("hidden", t !== id));
+window.scrollTo(0, 0);
 }
 
 // ============================================================
@@ -141,13 +135,14 @@ function validarEComecar() {
     APP_STATE.local = elLocal.value;
     APP_STATE.data = elData.value;
     APP_STATE.colaborador = elColab ? elColab.value : "";
-
-    // IMPORTANTE: registrarResposta agora usa id_vistoria internamente
-    registrarResposta(null, null); 
-
+APP_STATE.id_vistoria = `VIST_${Date.now()}`; // Cria o ID único aqui
+    localStorage.setItem("id_vistoria", APP_STATE.id_vistoria);
+    
+    registrarResposta(null, null); // Salva os metadados iniciais
     showScreen("screen-select-roteiro");
 }
-window.validarEComecar = validarEComecar;
+
+
 /// ============================================================
 // 4. PERSISTÊNCIA DE RESPOSTAS (REVISADA)
 // ============================================================
@@ -824,9 +819,6 @@ async function baixarExcelConsolidado() {
 // ============================================================
 // 12. EXPORTAÇÃO E SINCRONIZAÇÃO (REVISADO PARA R/PLUMBER)
 // ============================================================
-// ============================================================
-// 12. EXPORTAÇÃO E RESET (COM FEEDBACK DE SUCESSO)
-// ============================================================
 
 /**
  * Função que transforma o ícone de "Aguardando" (Amarelo) em "Sucesso" (Verde)
@@ -853,79 +845,6 @@ function marcarComoConcluidoUI(metodo) {
     }
 }
 
-async function baixarExcelConsolidado() {
-    try {
-        const workbook = new ExcelJS.Workbook();
-        const configuracao = [
-            { nome: "Geral", id: "geral", fonte: window.ROTEIRO_GERAL },
-            { nome: "PGE", id: "pge", fonte: window.ROTEIRO_PGE },
-            { nome: "Acid. Ambientais", id: "aa", fonte: window.ROTEIRO_AA }
-        ];
-
-        for (const config of configuracao) {
-            if (!config.fonte) continue;
-            const sheet = workbook.addWorksheet(config.nome);
-            // ... (suas colunas permanecem iguais)
-            sheet.columns = [
-                { header: 'SEÇÃO', key: 'secao', width: 20 },
-                { header: 'SUBLOCAL', key: 'sublocal', width: 25 },
-                { header: 'PERGUNTA', key: 'pergunta', width: 50 },
-                { header: 'RESPOSTA', key: 'resposta', width: 40 },
-                { header: 'FOTOS (ANEXOS)', key: 'fotos', width: 25 }
-            ];
-
-            const respostasDoTipo = APP_STATE.respostas[config.id] || {};
-
-            for (const p of config.fonte) {
-                let respostaTexto = (config.id === "pge") 
-                    ? respostasDoTipo[`${p.id}_${p.Sublocal}`] || "" 
-                    : respostasDoTipo[p.id] || "";
-                
-                const fotosNoBanco = await window.DB_API.getFotosPergunta(p.id);
-                // Filtra fotos garantindo compatibilidade de IDs
-                const fotosFiltradas = fotosNoBanco.filter(f => 
-                    (f.id_vistoria === APP_STATE.id_vistoria || f.id_visita === APP_STATE.id_vistoria)
-                );
-
-                if (!respostaTexto && fotosFiltradas.length === 0) continue;
-
-                const novaLinha = sheet.addRow({
-                    secao: p.Secao || p["Seção"] || "",
-                    sublocal: p.Sublocal || "Geral",
-                    pergunta: p.Pergunta,
-                    resposta: String(respostaTexto)
-                });
-
-                if (fotosFiltradas.length > 0) {
-                    novaLinha.height = 100;
-                    for (let i = 0; i < fotosFiltradas.length; i++) {
-                        const buffer = await (fotosFiltradas[i].blob.arrayBuffer());
-                        const imageId = workbook.addImage({ buffer, extension: 'jpeg' });
-                        sheet.addImage(imageId, {
-                            tl: { col: 4, row: novaLinha.number - 1 },
-                            ext: { width: 120, height: 120 }
-                        });
-                    }
-                }
-            }
-        }
-
-        const buffer = await workbook.xlsx.writeBuffer();
-        const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
-        const url = window.URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = `Vistoria_${APP_STATE.local}_${APP_STATE.data}.xlsx`;
-        a.click();
-
-        // ACIONA O VERDE
-        marcarComoConcluidoUI('excel');
-
-    } catch (err) { 
-        console.error(err); 
-        alert("Erro ao gerar Excel.");
-    }
-}
 
 async function sincronizarComBanco() {
     const btn = document.getElementById('btn-sync');
@@ -942,7 +861,7 @@ async function sincronizarComBanco() {
         const pendentes = vistorias.filter(v => v.id_vistoria === APP_STATE.id_vistoria && !v.sincronizado);
 
         for (const visita of pendentes) {
-            const res = await fetch("SUA_URL_DO_NGROK/vistorias", {
+            const res = await fetch('https://strapless-christi-unspread.ngrok-free.dev/vistorias/sincronizar', {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify(visita)
@@ -968,18 +887,6 @@ async function sincronizarComBanco() {
     }
 }
 
-function confirmarNovaVistoria() {
-    if (!confirm("Isso apagará o formulário atual para iniciar um novo. Confirma?")) return;
-
-    // Reset do Ícone para Amarelo/Relógio antes de recarregar
-    localStorage.removeItem("id_vistoria");
-    localStorage.removeItem("APP_META");
-    
-    // Limpa fotos temporárias do IndexedDB se necessário
-    // (Opcional: implementar limpeza total do DB de fotos)
-
-    window.location.reload();
-}
 // ============================================================
 // 13. SINCRONIZAÇÃO AUTOMÁTICA AO VOLTAR ONLINE
 // ============================================================
@@ -1019,6 +926,8 @@ async function sincronizarVisitasPendentes() {
 
 // Ouvinte para quando a internet retornar
 window.addEventListener('online', sincronizarVisitasPendentes);
+// ============================================================
+
 // CONFIRMAR NOVA VISTORIA
 async function confirmarNovaVistoria() {
     // Dentro da confirmarNovaVistoria, antes do reload:
@@ -1116,7 +1025,6 @@ DB_API.getFotosPergunta = async (idPergunta) => {
         req.onerror = (e) => reject(e);
     });
 };
-
 // ------------------------------------------------------------
 // VINCULAÇÕES GLOBAIS (FINAL DO ARQUIVO) - Versão Blindada
 // ------------------------------------------------------------
@@ -1142,15 +1050,16 @@ function marcarComoConcluidoUI(metodo) {
         text.innerText = "Dados enviados ao servidor com sucesso!";
     }
 }
+
 window.showScreen = showScreen;
 window.selectRoteiro = selectRoteiro;
 window.abrirCamera = abrirCamera;
-window.removerFoto = removerFoto; // Faltava esta!
+window.removerFoto = removerFoto; 
 window.registrarResposta = registrarResposta;
 window.gerenciarMudancaCheckbox = gerenciarMudancaCheckbox;
 window.baixarExcelConsolidado = baixarExcelConsolidado; 
 window.sincronizarComBanco = sincronizarComBanco;
 window.confirmarNovaVistoria = confirmarNovaVistoria;
+window.validarEComecar = validarEComecar;
 
-document.addEventListener("DOMContentLoaded", initApp);
-document.getElementById('status-sinc').innerText = "Sincronizando..."
+
