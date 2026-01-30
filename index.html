@@ -100,29 +100,37 @@
         </div>
     </section>
 
-    <section id="screen-final" class="max-w-xl mx-auto hidden min-h-screen flex flex-col justify-center p-6 text-center animate-in">
-        <div class="bg-white p-8 rounded-[3rem] shadow-2xl border border-gray-50">
-            <div id="status-icon-circle" class="w-20 h-20 bg-amber-100 text-amber-600 rounded-full flex items-center justify-center mx-auto mb-4 transition-all duration-500">
-                <span id="status-icon-symbol" class="text-4xl">⏳</span>
-            </div>
-            <h2 id="status-final-title" class="text-2xl font-black text-gray-800 mb-1 uppercase tracking-tight">Quase Pronto!</h2>
-            <p id="status-final-text" class="text-gray-400 text-xs mb-8">Dados salvos localmente. Envie agora para o sistema.</p>
-            
-            <div class="space-y-4">
-                <button onclick="handleSincronizacao()" id="btn-sync" class="bg-[#0067ac] text-white flex items-center justify-center gap-3">
-                    <span id="sync-text">ENVIAR AO SERVIDOR</span>
-                    <div id="sync-spinner" class="hidden animate-spin h-5 w-5 border-2 border-white border-t-transparent rounded-full"></div>
+  <section id="screen-final" class="max-w-xl mx-auto hidden min-h-screen flex flex-col justify-center p-6 text-center animate-in">
+    <div class="bg-white p-8 rounded-[3rem] shadow-2xl border border-gray-50">
+        <div id="status-icon-circle" class="w-20 h-20 bg-amber-100 text-amber-600 rounded-full flex items-center justify-center mx-auto mb-4 transition-all duration-500">
+            <span id="status-icon-symbol" class="text-4xl">⏳</span>
+        </div>
+        <h2 id="status-final-title" class="text-2xl font-black text-gray-800 mb-1 uppercase tracking-tight">Quase Pronto!</h2>
+        <p id="status-final-text" class="text-gray-400 text-xs mb-8">Dados salvos localmente. Escolha uma opção abaixo:</p>
+        
+        <div class="space-y-4">
+            <button onclick="handleSincronizacao()" id="btn-sync" class="bg-[#0067ac] text-white flex items-center justify-center gap-3 active:scale-95 transition-all">
+                <span id="sync-text">ENVIAR AO SERVIDOR</span>
+                <div id="sync-spinner" class="hidden animate-spin h-5 w-5 border-2 border-white border-t-transparent rounded-full"></div>
+            </button>
+
+            <button onclick="handleExcelReativo()" id="btn-excel" class="bg-emerald-600 text-white flex items-center justify-center gap-3 active:scale-95 transition-all">
+                <span id="excel-text">BAIXAR EXCEL 📊</span>
+                <div id="excel-spinner" class="hidden animate-spin h-5 w-5 border-2 border-white border-t-transparent rounded-full"></div>
+            </button>
+
+            <button onclick="voltarParaFormulario()" class="!min-h-0 py-3 bg-gray-100 text-[#0067ac] font-bold text-sm rounded-xl hover:bg-gray-200 transition-colors">
+                ← EDITAR OU REVISAR RESPOSTAS
+            </button>
+
+            <div class="pt-6 border-t mt-6">
+                <button onclick="confirmarNovaVistoria()" class="!min-h-0 py-2 text-gray-400 !text-[10px] uppercase font-black tracking-widest bg-transparent border-none">
+                    Arquivar e Iniciar Nova Vistoria
                 </button>
-                <button onclick="handleExcelReativo()" id="btn-excel" class="bg-emerald-600 text-white flex items-center justify-center gap-3">
-                    <span id="excel-text">BAIXAR EXCEL 📊</span>
-                    <div id="excel-spinner" class="hidden animate-spin h-5 w-5 border-2 border-white border-t-transparent rounded-full"></div>
-                </button>
-                <div class="pt-6 border-t mt-6">
-                    <button onclick="confirmarNovaVistoria()" class="bg-gray-100 text-gray-500 !text-[10px] uppercase font-bold">Iniciar Nova Vistoria</button>
-                </div>
             </div>
         </div>
-    </section>
+    </div>
+</section>
 
     <div id="status-sinc" class="hidden"></div>
     <script src="roteiros.js"></script>
