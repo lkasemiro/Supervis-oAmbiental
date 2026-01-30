@@ -737,13 +737,12 @@ function initCadastro() {
 async function handleExcelReativo() {
     UI_setLoading('excel', true, { loadingText: "A GERAR FICHEIRO..." });
     try {
-        await baixarExcelConsolidado();
-        // O marcarComoConcluidoUI já é chamado dentro da baixarExcelConsolidado no sucesso
-    } catch (error) {
-        console.error("Erro no Excel:", error);
-        alert("Erro ao gerar o Excel.");
-    } finally {
+        await baixarExcelConsolidado(); 
+        marcarComoConcluidoUI('excel');
         UI_setLoading('excel', false, { defaultText: "BAIXAR NOVAMENTE 📊" });
+    } catch (error) {
+        alert("Erro ao gerar o Excel.");
+        UI_setLoading('excel', false, { defaultText: "TENTAR GERAR EXCEL" });
     }
 }
 
@@ -817,6 +816,13 @@ async function baixarExcelConsolidado() {
 // ============================================================
 // 15. SINCRONIZAÇÃO UNIFICADA (R/PLUMBER)
 // ============================================================
+/**
+ * METADESCRIÇÃO DO PROCESSO:
+ * Esta seção gerencia a saída de dados do PWA. 
+ * O handleSincronizacao envia JSON + Fotos para o servidor R/Plumber.
+ * O handleExcelReativo gera o relatório XLSX localmente via ExcelJS.
+ */
+
 async function handleSincronizacao() {
     if (!navigator.onLine) {
         alert("Sem conexão à internet! Conecte-se para enviar ao servidor.");
@@ -826,13 +832,14 @@ async function handleSincronizacao() {
     UI_setLoading('sync', true, { loadingText: "A ENVIAR DADOS..." });
 
     try {
-        // Busca todas as fotos da vistoria atual de uma vez
+        // Coleta todas as fotos salvas no IndexedDB para esta vistoria
         const fotosParaEnviar = await DB_API.getAllFotosVistoria(APP_STATE.id_vistoria);
         
         const dadosCompletos = {
             ...APP_STATE,
             fotos_coletadas: fotosParaEnviar,
-            timestamp_envio: new Date().toISOString()
+            status_envio: "finalizado",
+            timestamp_servidor: new Date().toISOString()
         };
 
         const response = await fetch('https://strapless-christi-unspread.ngrok-free.dev/vistorias/sincronizar', {
@@ -844,26 +851,18 @@ async function handleSincronizacao() {
             body: JSON.stringify(dadosCompletos)
         });
 
-        const resultado = await response.json();
+        if (!response.ok) throw new Error("Erro na resposta do servidor.");
 
-        if (response.ok && resultado.status === "sucesso") {
-            marcarComoConcluidoUI('servidor');
-            UI_setLoading('sync', false, { defaultText: "ENVIADO COM SUCESSO ✓" });
-            
-            // Marca como sincronizado no histórico local
-            const db = await DB_API.openDB();
-            const tx = db.transaction("vistorias", "readwrite");
-            APP_STATE.sincronizado = true;
-            await tx.objectStore("vistorias").put(JSON.parse(JSON.stringify(APP_STATE)));
-            
-            document.getElementById('btn-sync').style.backgroundColor = "#9ca3af";
-        } else {
-            throw new Error(resultado.message || "Erro no servidor");
-        }
+        marcarComoConcluidoUI('servidor');
+        UI_setLoading('sync', false, { defaultText: "ENVIADO COM SUCESSO ✓" });
+        
+        // Estiliza o botão como concluído
+        const btn = document.getElementById('btn-sync');
+        if(btn) btn.classList.replace('bg-[#0067ac]', 'bg-gray-400');
 
     } catch (error) {
         console.error("Erro na sincronização:", error);
-        alert("Falha ao enviar dados: " + error.message);
+        alert("Falha ao enviar dados. Verifique a conexão com o servidor.");
         UI_setLoading('sync', false, { defaultText: "TENTAR ENVIAR NOVAMENTE" });
     }
 }
@@ -873,15 +872,16 @@ function UI_setLoading(action, isLoading, config = {}) {
     const btn = document.getElementById(`btn-${action}`);
     const textSpan = document.getElementById(`${action}-text`);
     const spinner = document.getElementById(`${action}-spinner`);
+
     if (!btn) return;
 
     btn.disabled = isLoading;
     if (isLoading) {
-        textSpan.innerText = config.loadingText || "PROCESSANDO...";
-        if (spinner) spinner.classList.remove('hidden');
+        if(textSpan) textSpan.innerText = config.loadingText || "PROCESSANDO...";
+        if(spinner) spinner.classList.remove('hidden');
     } else {
-        textSpan.innerText = config.defaultText;
-        if (spinner) spinner.classList.add('hidden');
+        if(textSpan) textSpan.innerText = config.defaultText;
+        if(spinner) spinner.classList.add('hidden');
     }
 }
 /**
@@ -1103,6 +1103,8 @@ window.registrarResposta = registrarResposta;
 window.gerenciarMudancaCheckbox = gerenciarMudancaCheckbox;
 window.baixarExcelConsolidado = baixarExcelConsolidado; 
 window.sincronizarComBanco = sincronizarComBanco;
+window.handleSincronizacao = handleSincronizacao;
+window.handleExcelReativo = handleExcelReativo;
 window.confirmarNovaVistoria = confirmarNovaVistoria;
 window.validarEComecar = validarEComecar;
 
