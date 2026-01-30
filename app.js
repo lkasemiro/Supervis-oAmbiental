@@ -48,6 +48,7 @@ function showScreen(id) {
     });
     window.scrollTo(0, 0);
 }
+
 // ============================================================
 // 3. BOOTSTRAP DO APLICATIVO
 // ============================================================
@@ -803,15 +804,22 @@ async function baixarExcelConsolidado() {
                 }
             }
         }
-        // ... (Download XLSX permanece igual ao seu código)
+        // Gerar o arquivo
         const buffer = await workbook.xlsx.writeBuffer();
         const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
         const url = window.URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url;
-        a.download = `Relatorio_${APP_STATE.local}_${new Date().getTime()}.xlsx`;
+        a.download = `Relatorio_${APP_STATE.local || 'Vistoria'}_${new Date().getTime()}.xlsx`;
         a.click();
-    } catch (err) { console.error(err); }
+        
+        // Mudar o ícone para Verde apenas após o sucesso
+        marcarComoConcluidoUI('excel');
+
+    } catch (err) { 
+        console.error(err); 
+        alert("Erro ao gerar Excel: " + err.message);
+    }
 }
 // ============================================================
 // 12. EXPORTAÇÃO E SINCRONIZAÇÃO (REVISADO PARA R/PLUMBER)
@@ -854,20 +862,29 @@ async function sincronizarComBanco() {
                 body: JSON.stringify(visita)
             });
 
-            if (res.ok) {
-                const respostaServidor = await res.json();
-                if (respostaServidor.status === "sucesso") {
-                    visita.sincronizado = true;
-                    // Salva o status de sincronizado no banco local
-                    const txUp = db.transaction("vistorias", "readwrite");
-                    await txUp.objectStore("vistorias").put(visita);
-                    console.log(`✅ ${visita.id_vistoria} sincronizada.`);
-                }
-            }
-        } catch (e) {
-            console.error("Falha ao sincronizar item:", e);
-        }
+if (res.ok) {
+    const respostaServidor = await res.json();
+    
+    // Verifica se o seu servidor R/Plumber retornou "sucesso"
+    if (respostaServidor.status === "sucesso" || respostaServidor.message === "sucesso") {
+        visita.sincronizado = true;
+
+        // 1. Atualiza o status no IndexedDB para não sincronizar em duplicidade depois
+        const txUp = db.transaction("vistorias", "readwrite");
+        const store = txUp.objectStore("vistorias");
+        await store.put(visita);
+        
+        console.log(`✅ ${visita.id_vistoria} sincronizada no servidor e atualizada localmente.`);
+
+        // 2. CHAMA A MUDANÇA DE ÍCONE (Vira Verde)
+        marcarComoConcluidoUI('sync');
+    } else {
+        console.warn("Servidor recebeu, mas retornou um status inesperado:", respostaServidor);
+        alert("O servidor respondeu, mas houve um problema no processamento dos dados.");
     }
+} else {
+    alert("Erro na rede ao tentar sincronizar. Verifique sua conexão ou o servidor.");
+}
     if(statusEl) statusEl.innerText = "Sincronização Finalizada!";
     alert("Processo concluído!");
 }
@@ -912,6 +929,11 @@ async function sincronizarVisitasPendentes() {
 window.addEventListener('online', sincronizarVisitasPendentes);
 // CONFIRMAR NOVA VISTORIA
 async function confirmarNovaVistoria() {
+    // Dentro da confirmarNovaVistoria, antes do reload:
+const circle = document.getElementById('status-icon-circle');
+const symbol = document.getElementById('status-icon-symbol');
+if(circle) circle.className = "w-20 h-20 bg-amber-100 text-amber-600 rounded-full flex items-center justify-center mx-auto mb-4";
+if(symbol) symbol.innerText = "⏳";
     if (!confirm("Deseja arquivar esta vistoria e iniciar uma nova?")) return;
 
     try {
@@ -1006,6 +1028,28 @@ DB_API.getFotosPergunta = async (idPergunta) => {
 // ------------------------------------------------------------
 // VINCULAÇÕES GLOBAIS (FINAL DO ARQUIVO) - Versão Blindada
 // ------------------------------------------------------------
+function marcarComoConcluidoUI(metodo) {
+    const circle = document.getElementById('status-icon-circle');
+    const symbol = document.getElementById('status-icon-symbol');
+    const title = document.getElementById('status-final-title');
+    const text = document.getElementById('status-final-text');
+
+    if(!circle || !symbol) return;
+
+    // Transição de cores: sai Amarelo, entra Verde
+    circle.classList.remove('bg-amber-100', 'text-amber-600');
+    circle.classList.add('bg-green-100', 'text-green-600');
+    
+    // Atualiza ícone e mensagens
+    symbol.innerText = "✓";
+    title.innerText = "TUDO PRONTO!";
+    
+    if (metodo === 'excel') {
+        text.innerText = "Relatório Excel baixado. Você já pode iniciar outra vistoria.";
+    } else {
+        text.innerText = "Dados enviados ao servidor com sucesso!";
+    }
+}
 window.showScreen = showScreen;
 window.selectRoteiro = selectRoteiro;
 window.abrirCamera = abrirCamera;
