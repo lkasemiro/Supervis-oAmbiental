@@ -824,69 +824,161 @@ async function baixarExcelConsolidado() {
 // ============================================================
 // 12. EXPORTAÇÃO E SINCRONIZAÇÃO (REVISADO PARA R/PLUMBER)
 // ============================================================
-async function sincronizarComBanco() {
-    if (!navigator.onLine) return alert("Sem internet!");
-    const statusEl = document.getElementById('status-sinc');
-    if(statusEl) statusEl.innerText = "Iniciando sincronização...";
+// ============================================================
+// 12. EXPORTAÇÃO E RESET (COM FEEDBACK DE SUCESSO)
+// ============================================================
 
-    const db = await DB_API.openDB();
+/**
+ * Função que transforma o ícone de "Aguardando" (Amarelo) em "Sucesso" (Verde)
+ */
+function marcarComoConcluidoUI(metodo) {
+    const circle = document.getElementById('status-icon-circle');
+    const symbol = document.getElementById('status-icon-symbol');
+    const title = document.getElementById('status-final-title');
+    const text = document.getElementById('status-final-text');
+
+    if(!circle || !symbol) return;
+
+    // Transição para Verde
+    circle.classList.remove('bg-amber-100', 'text-amber-600');
+    circle.classList.add('bg-green-100', 'text-green-600');
     
-    // 1. Pega vistorias pendentes com tratamento de erro
-    const vistorias = await new Promise(res => {
-        const req = db.transaction("vistorias", "readonly").objectStore("vistorias").getAll();
-        req.onsuccess = () => res(req.result || []);
-    });
+    symbol.innerText = "✓";
+    title.innerText = "TUDO PRONTO!";
+    
+    if (metodo === 'excel') {
+        text.innerText = "Relatório Excel baixado. Você já pode iniciar outra vistoria.";
+    } else {
+        text.innerText = "Dados enviados ao servidor da CEDAE com sucesso!";
+    }
+}
 
-    const pendentes = vistorias.filter(v => !v.sincronizado);
-    if (pendentes.length === 0) return alert("Nada para sincronizar!");
+async function baixarExcelConsolidado() {
+    try {
+        const workbook = new ExcelJS.Workbook();
+        const configuracao = [
+            { nome: "Geral", id: "geral", fonte: window.ROTEIRO_GERAL },
+            { nome: "PGE", id: "pge", fonte: window.ROTEIRO_PGE },
+            { nome: "Acid. Ambientais", id: "aa", fonte: window.ROTEIRO_AA }
+        ];
 
-    // 2. Carrega TODAS as fotos uma única vez (Otimização)
-    const todasFotos = await new Promise(res => {
-        const req = db.transaction("fotos", "readonly").objectStore("fotos").getAll();
-        req.onsuccess = () => res(req.result || []);
-    });
+        for (const config of configuracao) {
+            if (!config.fonte) continue;
+            const sheet = workbook.addWorksheet(config.nome);
+            // ... (suas colunas permanecem iguais)
+            sheet.columns = [
+                { header: 'SEÇÃO', key: 'secao', width: 20 },
+                { header: 'SUBLOCAL', key: 'sublocal', width: 25 },
+                { header: 'PERGUNTA', key: 'pergunta', width: 50 },
+                { header: 'RESPOSTA', key: 'resposta', width: 40 },
+                { header: 'FOTOS (ANEXOS)', key: 'fotos', width: 25 }
+            ];
 
-    for (let visita of pendentes) {
-        try {
-            if(statusEl) statusEl.innerText = `Sincronizando: ${visita.id_vistoria}...`;
-            
-            // Vincula fotos específicas
-            visita.fotos_coletadas = todasFotos.filter(f => f.id_visita === visita.id_vistoria);
+            const respostasDoTipo = APP_STATE.respostas[config.id] || {};
 
-            const res = await fetch('https://strapless-christi-unspread.ngrok-free.dev/vistorias/sincronizar', {
-                method: 'POST',
-                headers: { 
-                    'Content-Type': 'application/json',
-                    'ngrok-skip-browser-warning': 'true' 
-                },
+            for (const p of config.fonte) {
+                let respostaTexto = (config.id === "pge") 
+                    ? respostasDoTipo[`${p.id}_${p.Sublocal}`] || "" 
+                    : respostasDoTipo[p.id] || "";
+                
+                const fotosNoBanco = await window.DB_API.getFotosPergunta(p.id);
+                // Filtra fotos garantindo compatibilidade de IDs
+                const fotosFiltradas = fotosNoBanco.filter(f => 
+                    (f.id_vistoria === APP_STATE.id_vistoria || f.id_visita === APP_STATE.id_vistoria)
+                );
+
+                if (!respostaTexto && fotosFiltradas.length === 0) continue;
+
+                const novaLinha = sheet.addRow({
+                    secao: p.Secao || p["Seção"] || "",
+                    sublocal: p.Sublocal || "Geral",
+                    pergunta: p.Pergunta,
+                    resposta: String(respostaTexto)
+                });
+
+                if (fotosFiltradas.length > 0) {
+                    novaLinha.height = 100;
+                    for (let i = 0; i < fotosFiltradas.length; i++) {
+                        const buffer = await (fotosFiltradas[i].blob.arrayBuffer());
+                        const imageId = workbook.addImage({ buffer, extension: 'jpeg' });
+                        sheet.addImage(imageId, {
+                            tl: { col: 4, row: novaLinha.number - 1 },
+                            ext: { width: 120, height: 120 }
+                        });
+                    }
+                }
+            }
+        }
+
+        const buffer = await workbook.xlsx.writeBuffer();
+        const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `Vistoria_${APP_STATE.local}_${APP_STATE.data}.xlsx`;
+        a.click();
+
+        // ACIONA O VERDE
+        marcarComoConcluidoUI('excel');
+
+    } catch (err) { 
+        console.error(err); 
+        alert("Erro ao gerar Excel.");
+    }
+}
+
+async function sincronizarComBanco() {
+    const btn = document.getElementById('btn-sync');
+    if(btn) btn.innerText = "ENVIANDO...";
+
+    try {
+        const db = await DB_API.openDB();
+        const vistorias = await new Promise((res) => {
+            const tx = db.transaction("vistorias", "readonly");
+            tx.objectStore("vistorias").getAll().onsuccess = (e) => res(e.target.result);
+        });
+
+        // Filtra apenas a vistoria atual que não foi sincronizada
+        const pendentes = vistorias.filter(v => v.id_vistoria === APP_STATE.id_vistoria && !v.sincronizado);
+
+        for (const visita of pendentes) {
+            const res = await fetch("SUA_URL_DO_NGROK/vistorias", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
                 body: JSON.stringify(visita)
             });
 
-if (res.ok) {
-    const respostaServidor = await res.json();
-    
-    // Verifica se o seu servidor R/Plumber retornou "sucesso"
-    if (respostaServidor.status === "sucesso" || respostaServidor.message === "sucesso") {
-        visita.sincronizado = true;
-
-        // 1. Atualiza o status no IndexedDB para não sincronizar em duplicidade depois
-        const txUp = db.transaction("vistorias", "readwrite");
-        const store = txUp.objectStore("vistorias");
-        await store.put(visita);
-        
-        console.log(`✅ ${visita.id_vistoria} sincronizada no servidor e atualizada localmente.`);
-
-        // 2. CHAMA A MUDANÇA DE ÍCONE (Vira Verde)
-        marcarComoConcluidoUI('sync');
-    } else {
-        console.warn("Servidor recebeu, mas retornou um status inesperado:", respostaServidor);
-        alert("O servidor respondeu, mas houve um problema no processamento dos dados.");
+            if (res.ok) {
+                const resposta = await res.json();
+                if (resposta.status === "sucesso") {
+                    visita.sincronizado = true;
+                    const txUp = db.transaction("vistorias", "readwrite");
+                    await txUp.objectStore("vistorias").put(visita);
+                    
+                    // ACIONA O VERDE
+                    marcarComoConcluidoUI('sync');
+                }
+            }
+        }
+    } catch (err) {
+        console.error(err);
+        alert("Erro na conexão com o servidor.");
+    } finally {
+        if(btn) btn.innerText = "ENVIAR PARA O SERVIDOR ☁️";
     }
-} else {
-    alert("Erro na rede ao tentar sincronizar. Verifique sua conexão ou o servidor.");
 }
-    if(statusEl) statusEl.innerText = "Sincronização Finalizada!";
-    alert("Processo concluído!");
+
+function confirmarNovaVistoria() {
+    if (!confirm("Isso apagará o formulário atual para iniciar um novo. Confirma?")) return;
+
+    // Reset do Ícone para Amarelo/Relógio antes de recarregar
+    localStorage.removeItem("id_vistoria");
+    localStorage.removeItem("APP_META");
+    
+    // Limpa fotos temporárias do IndexedDB se necessário
+    // (Opcional: implementar limpeza total do DB de fotos)
+
+    window.location.reload();
 }
 // ============================================================
 // 13. SINCRONIZAÇÃO AUTOMÁTICA AO VOLTAR ONLINE
