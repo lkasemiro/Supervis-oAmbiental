@@ -13,7 +13,7 @@ document.getElementById('status-sinc').innerText = "Sincronizando..."
 
 const LOCAIS_VISITA = [
     "Rio D'Ouro", "São Pedro", "Tinguá - Barrelão", "Tinguá - Serra Velha",
-    "Tinguá - Brava/Macucuo", "Tinguá - Colomi", "Tinguá - Boa Esperança",
+    "Tinguá - Brava/Macuco", "Tinguá - Colomi", "Tinguá - Boa Esperança",
     "Mantiquira - T1", "Mantiquira - T2", "Xerém I - João Pinto",
     "Xerém II - Entrada", "Xerém III - Plano", "Xerém III - Registro"
 ];
@@ -258,9 +258,6 @@ async function selectRoteiro(tipo) {
 
     showScreen("screen-formulario");
 }
-
-
-
 // ============================================================
 // 7. SUBLOCAL + SEÇÕES
 // ============================================================
@@ -450,7 +447,7 @@ function renderFormulario(secaoFiltrada = null) {
     if (typeof applyConditionalLogic === "function") applyConditionalLogic();
 }
 // ============================================================
-// 9. INPUTS
+// 10. INPUTS
 // ============================================================
 function renderInput(p, container, valorSalvo) {
     const tipoInput = p.TipoInput; 
@@ -549,7 +546,7 @@ function gerenciarMudancaCheckbox(idPergunta) {
 
 
 // ============================================================
-// 10. CONDICIONAIS
+// 11. CONDICIONAIS
 // ============================================================
 
 function applyConditionalLogic() {
@@ -570,7 +567,7 @@ function applyConditionalLogic() {
 }
 
 // ============================================================
-// SISTEMA DE CÂMERA E PROCESSAMENTO DE IMAGENS
+// 12 SISTEMA DE CÂMERA E PROCESSAMENTO DE IMAGENS
 // ============================================================
 
 /**
@@ -704,7 +701,7 @@ async function removerFoto(fotoId, idPergunta) {
 }
 
 // ============================================================
-// Iniciar cadastro
+//  13 Iniciar cadastro
 // ============================================================
 function initCadastro() {
     document.getElementById("btn-cadastro-continuar").onclick = () => {
@@ -735,7 +732,7 @@ function initCadastro() {
 }
 
 // ============================================================
-// 12. EXPORTAÇÃO E RESET
+// 14. EXPORTAÇÃO E RESET
 // ============================================================
 async function baixarExcelConsolidado() {
     try {
@@ -817,7 +814,7 @@ async function baixarExcelConsolidado() {
     }
 }
 // ============================================================
-// 12. EXPORTAÇÃO E SINCRONIZAÇÃO (REVISADO PARA R/PLUMBER)
+// 15. EXPORTAÇÃO E SINCRONIZAÇÃO (REVISADO PARA R/PLUMBER)
 // ============================================================
 
 /**
@@ -883,12 +880,12 @@ async function sincronizarComBanco() {
         console.error(err);
         alert("Erro na conexão com o servidor.");
     } finally {
-        if(btn) btn.innerText = "ENVIAR PARA O SERVIDOR ☁️";
+        if(btn) btn.innerText = "ENVIAR PARA O SERVIDOR";
     }
 }
 
 // ============================================================
-// 13. SINCRONIZAÇÃO AUTOMÁTICA AO VOLTAR ONLINE
+// 16. SINCRONIZAÇÃO AUTOMÁTICA AO VOLTAR ONLINE
 // ============================================================
 async function sincronizarVisitasPendentes() {
     if (!navigator.onLine) return;
