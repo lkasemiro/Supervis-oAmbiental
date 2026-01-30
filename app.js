@@ -732,8 +732,21 @@ function initCadastro() {
 }
 
 // ============================================================
-// 14. EXPORTAÇÃO E RESET
+// 14. EXPORTAÇÃO EXCEL (REATIVO)
 // ============================================================
+async function handleExcelReativo() {
+    UI_setLoading('excel', true, { loadingText: "A GERAR FICHEIRO..." });
+    try {
+        await baixarExcelConsolidado();
+        // O marcarComoConcluidoUI já é chamado dentro da baixarExcelConsolidado no sucesso
+    } catch (error) {
+        console.error("Erro no Excel:", error);
+        alert("Erro ao gerar o Excel.");
+    } finally {
+        UI_setLoading('excel', false, { defaultText: "BAIXAR NOVAMENTE 📊" });
+    }
+}
+
 async function baixarExcelConsolidado() {
     try {
         const workbook = new ExcelJS.Workbook();
@@ -757,22 +770,12 @@ async function baixarExcelConsolidado() {
             const respostasDoTipo = APP_STATE.respostas[config.id] || {};
 
             for (const p of config.fonte) {
-                // CORREÇÃO PGE: Busca pela chave composta ID + Sublocal
-                let respostaTexto = "";
-                if (config.id === "pge") {
-                    const chaveComposta = `${p.id}_${p.Sublocal}`;
-                    respostaTexto = respostasDoTipo[chaveComposta] || "";
-                } else {
-                    respostaTexto = respostasDoTipo[p.id] || "";
-                }
+                let respostaTexto = (config.id === "pge") 
+                    ? respostasDoTipo[`${p.id}_${p.Sublocal}`] || "" 
+                    : respostasDoTipo[p.id] || "";
                 
-                // Busca fotos filtrando pelo id da pergunta (e opcionalmente sublocal)
-                const fotosNoBanco = await window.DB_API.getFotosPergunta(p.id);
-                // Filtra fotos apenas desta visita e deste sublocal se for PGE
-                const fotosFiltradas = fotosNoBanco.filter(f => 
-                    f.id_visita === APP_STATE.id_visita && 
-                    (config.id !== "pge" || f.sublocal === p.Sublocal)
-                );
+                // Busca fotos usando a função unificada do DB_API
+                const fotosFiltradas = await DB_API.getFotosPergunta(p.id);
 
                 if (!respostaTexto && fotosFiltradas.length === 0) continue;
 
@@ -785,8 +788,8 @@ async function baixarExcelConsolidado() {
 
                 if (fotosFiltradas.length > 0) {
                     novaLinha.height = 100;
-                    for (let i = 0; i < fotosFiltradas.length; i++) {
-                        const arrayBuffer = await fotosFiltradas[i].blob.arrayBuffer();
+                    for (const foto of fotosFiltradas) {
+                        const arrayBuffer = await foto.blob.arrayBuffer();
                         const imageId = workbook.addImage({ buffer: arrayBuffer, extension: 'jpeg' });
                         sheet.addImage(imageId, {
                             tl: { col: 4, row: novaLinha.number - 1 },
@@ -796,29 +799,93 @@ async function baixarExcelConsolidado() {
                 }
             }
         }
-        // Gerar o arquivo
+
         const buffer = await workbook.xlsx.writeBuffer();
         const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
         const url = window.URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url;
-        a.download = `Relatorio_${APP_STATE.local || 'Vistoria'}_${new Date().getTime()}.xlsx`;
+        a.download = `Relatorio_${APP_STATE.local || 'Vistoria'}_${Date.now()}.xlsx`;
         a.click();
         
-        // Mudar o ícone para Verde apenas após o sucesso
         marcarComoConcluidoUI('excel');
-
-    } catch (err) { 
-        console.error(err); 
-        alert("Erro ao gerar Excel: " + err.message);
+    } catch (err) {
+        throw err;
     }
 }
-// ============================================================
-// 15. EXPORTAÇÃO E SINCRONIZAÇÃO (REVISADO PARA R/PLUMBER)
-// ============================================================
 
+// ============================================================
+// 15. SINCRONIZAÇÃO UNIFICADA (R/PLUMBER)
+// ============================================================
+async function handleSincronizacao() {
+    if (!navigator.onLine) {
+        alert("Sem conexão à internet! Conecte-se para enviar ao servidor.");
+        return;
+    }
+
+    UI_setLoading('sync', true, { loadingText: "A ENVIAR DADOS..." });
+
+    try {
+        // Busca todas as fotos da vistoria atual de uma vez
+        const fotosParaEnviar = await DB_API.getAllFotosVistoria(APP_STATE.id_vistoria);
+        
+        const dadosCompletos = {
+            ...APP_STATE,
+            fotos_coletadas: fotosParaEnviar,
+            timestamp_envio: new Date().toISOString()
+        };
+
+        const response = await fetch('https://strapless-christi-unspread.ngrok-free.dev/vistorias/sincronizar', {
+            method: 'POST',
+            headers: { 
+                'Content-Type': 'application/json',
+                'ngrok-skip-browser-warning': 'true' 
+            },
+            body: JSON.stringify(dadosCompletos)
+        });
+
+        const resultado = await response.json();
+
+        if (response.ok && resultado.status === "sucesso") {
+            marcarComoConcluidoUI('servidor');
+            UI_setLoading('sync', false, { defaultText: "ENVIADO COM SUCESSO ✓" });
+            
+            // Marca como sincronizado no histórico local
+            const db = await DB_API.openDB();
+            const tx = db.transaction("vistorias", "readwrite");
+            APP_STATE.sincronizado = true;
+            await tx.objectStore("vistorias").put(JSON.parse(JSON.stringify(APP_STATE)));
+            
+            document.getElementById('btn-sync').style.backgroundColor = "#9ca3af";
+        } else {
+            throw new Error(resultado.message || "Erro no servidor");
+        }
+
+    } catch (error) {
+        console.error("Erro na sincronização:", error);
+        alert("Falha ao enviar dados: " + error.message);
+        UI_setLoading('sync', false, { defaultText: "TENTAR ENVIAR NOVAMENTE" });
+    }
+}
+
+/** Função Auxiliar de UI */
+function UI_setLoading(action, isLoading, config = {}) {
+    const btn = document.getElementById(`btn-${action}`);
+    const textSpan = document.getElementById(`${action}-text`);
+    const spinner = document.getElementById(`${action}-spinner`);
+    if (!btn) return;
+
+    btn.disabled = isLoading;
+    if (isLoading) {
+        textSpan.innerText = config.loadingText || "PROCESSANDO...";
+        if (spinner) spinner.classList.remove('hidden');
+    } else {
+        textSpan.innerText = config.defaultText;
+        if (spinner) spinner.classList.add('hidden');
+    }
+}
 /**
- * Função que transforma o ícone de "Aguardando" (Amarelo) em "Sucesso" (Verde)
+ * ATUALIZAÇÃO DA INTERFACE DE SUCESSO
  */
 function marcarComoConcluidoUI(metodo) {
     const circle = document.getElementById('status-icon-circle');
@@ -826,19 +893,21 @@ function marcarComoConcluidoUI(metodo) {
     const title = document.getElementById('status-final-title');
     const text = document.getElementById('status-final-text');
 
-    if(!circle || !symbol) return;
+    // Animação de pulso
+    circle.classList.add('scale-110');
+    setTimeout(() => circle.classList.remove('scale-110'), 200);
 
-    // Transição para Verde
-    circle.classList.remove('bg-amber-100', 'text-amber-600');
-    circle.classList.add('bg-green-100', 'text-green-600');
+    // Muda Amarelo -> Verde
+    circle.classList.replace('bg-amber-100', 'bg-green-500');
+    circle.classList.replace('text-amber-600', 'text-white');
     
     symbol.innerText = "✓";
-    title.innerText = "TUDO PRONTO!";
+    title.innerText = "SUCESSO!";
     
     if (metodo === 'excel') {
-        text.innerText = "Relatório Excel baixado. Você já pode iniciar outra vistoria.";
+        text.innerText = "A planilha foi gerada e o download iniciado.";
     } else {
-        text.innerText = "Dados enviados ao servidor da CEDAE com sucesso!";
+        text.innerText = "Os dados e fotos já estão no servidor da CEDAE.";
     }
 }
 
@@ -1022,32 +1091,10 @@ DB_API.getFotosPergunta = async (idPergunta) => {
         req.onerror = (e) => reject(e);
     });
 };
+
 // ------------------------------------------------------------
 // VINCULAÇÕES GLOBAIS (FINAL DO ARQUIVO) - Versão Blindada
 // ------------------------------------------------------------
-function marcarComoConcluidoUI(metodo) {
-    const circle = document.getElementById('status-icon-circle');
-    const symbol = document.getElementById('status-icon-symbol');
-    const title = document.getElementById('status-final-title');
-    const text = document.getElementById('status-final-text');
-
-    if(!circle || !symbol) return;
-
-    // Transição de cores: sai Amarelo, entra Verde
-    circle.classList.remove('bg-amber-100', 'text-amber-600');
-    circle.classList.add('bg-green-100', 'text-green-600');
-    
-    // Atualiza ícone e mensagens
-    symbol.innerText = "✓";
-    title.innerText = "TUDO PRONTO!";
-    
-    if (metodo === 'excel') {
-        text.innerText = "Relatório Excel baixado. Você já pode iniciar outra vistoria.";
-    } else {
-        text.innerText = "Dados enviados ao servidor com sucesso!";
-    }
-}
-
 window.showScreen = showScreen;
 window.selectRoteiro = selectRoteiro;
 window.abrirCamera = abrirCamera;
