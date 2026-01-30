@@ -398,20 +398,10 @@ function renderFormulario(secaoFiltrada = null) {
     const container = document.getElementById("conteudo_formulario");
     if (!container) return;
 
-    // Remove apenas as perguntas mantendo imagens de apoio
     const gruposAntigos = container.querySelectorAll('[id^="group_"]');
     gruposAntigos.forEach(el => el.remove());
 
-    if (container.innerText.includes("Selecione um sublocal")) {
-        container.innerHTML = "";
-    }
-
-    let perguntas = APP_STATE.roteiro;
-    
-    if (APP_STATE.tipoRoteiro !== "pge") {
-        const img = document.getElementById("container_imagem_apoio_sublocal");
-        if (img) img.remove();
-    }
+    let perguntas = APP_STATE.roteiro || [];
 
     if (APP_STATE.tipoRoteiro === "pge") {
         const sub = document.getElementById("sublocal_select").value;
@@ -419,7 +409,7 @@ function renderFormulario(secaoFiltrada = null) {
             container.innerHTML = `<div class="text-center p-12 text-slate-400 italic bg-slate-50 rounded-[2rem] border-2 border-dashed border-slate-200">Selecione um sublocal para carregar as perguntas.</div>`;
             return;
         }
-        perguntas = perguntas.filter(p => p.Local === APP_STATE.local && p.Sublocal === sub);
+        perguntas = perguntas.filter(p => p.Sublocal === sub);
     }
 
     if (secaoFiltrada) {
@@ -429,7 +419,6 @@ function renderFormulario(secaoFiltrada = null) {
     perguntas.forEach(p => {
         const div = document.createElement("div");
         div.id = `group_${p.id}`;
-        // Novo Design: Card robusto com borda sutil e espaçamento interno maior
         div.className = "bg-white p-7 rounded-[2rem] shadow-sm border border-slate-100 mb-6 animate-in transition-all";
         
         const valorSalvo = APP_STATE.respostas[APP_STATE.tipoRoteiro]?.[p.id] ?? "";
@@ -441,10 +430,10 @@ function renderFormulario(secaoFiltrada = null) {
             <div id="input-root-${p.id}" class="space-y-3"></div>
         `;
         container.appendChild(div);
-        renderInput(p, document.getElementById(`input-root-${p.id}`), valorSalvo); 
+        if (typeof renderInput === "function") {
+            renderInput(p, document.getElementById(`input-root-${p.id}`), valorSalvo); 
+        }
     });
-
-    if (typeof applyConditionalLogic === "function") applyConditionalLogic();
 }
 // ============================================================
 // 10. INPUTS
@@ -737,12 +726,13 @@ function initCadastro() {
 async function handleExcelReativo() {
     UI_setLoading('excel', true, { loadingText: "A GERAR FICHEIRO..." });
     try {
-        await baixarExcelConsolidado(); 
-        marcarComoConcluidoUI('excel');
-        UI_setLoading('excel', false, { defaultText: "BAIXAR NOVAMENTE 📊" });
+        await baixarExcelConsolidado();
+        // O marcarComoConcluidoUI já é chamado dentro da baixarExcelConsolidado no sucesso
     } catch (error) {
+        console.error("Erro no Excel:", error);
         alert("Erro ao gerar o Excel.");
-        UI_setLoading('excel', false, { defaultText: "TENTAR GERAR EXCEL" });
+    } finally {
+        UI_setLoading('excel', false, { defaultText: "BAIXAR NOVAMENTE 📊" });
     }
 }
 
@@ -816,13 +806,6 @@ async function baixarExcelConsolidado() {
 // ============================================================
 // 15. SINCRONIZAÇÃO UNIFICADA (R/PLUMBER)
 // ============================================================
-/**
- * METADESCRIÇÃO DO PROCESSO:
- * Esta seção gerencia a saída de dados do PWA. 
- * O handleSincronizacao envia JSON + Fotos para o servidor R/Plumber.
- * O handleExcelReativo gera o relatório XLSX localmente via ExcelJS.
- */
-
 async function handleSincronizacao() {
     if (!navigator.onLine) {
         alert("Sem conexão à internet! Conecte-se para enviar ao servidor.");
@@ -832,14 +815,13 @@ async function handleSincronizacao() {
     UI_setLoading('sync', true, { loadingText: "A ENVIAR DADOS..." });
 
     try {
-        // Coleta todas as fotos salvas no IndexedDB para esta vistoria
+        // Busca todas as fotos da vistoria atual de uma vez
         const fotosParaEnviar = await DB_API.getAllFotosVistoria(APP_STATE.id_vistoria);
         
         const dadosCompletos = {
             ...APP_STATE,
             fotos_coletadas: fotosParaEnviar,
-            status_envio: "finalizado",
-            timestamp_servidor: new Date().toISOString()
+            timestamp_envio: new Date().toISOString()
         };
 
         const response = await fetch('https://strapless-christi-unspread.ngrok-free.dev/vistorias/sincronizar', {
@@ -851,18 +833,26 @@ async function handleSincronizacao() {
             body: JSON.stringify(dadosCompletos)
         });
 
-        if (!response.ok) throw new Error("Erro na resposta do servidor.");
+        const resultado = await response.json();
 
-        marcarComoConcluidoUI('servidor');
-        UI_setLoading('sync', false, { defaultText: "ENVIADO COM SUCESSO ✓" });
-        
-        // Estiliza o botão como concluído
-        const btn = document.getElementById('btn-sync');
-        if(btn) btn.classList.replace('bg-[#0067ac]', 'bg-gray-400');
+        if (response.ok && resultado.status === "sucesso") {
+            marcarComoConcluidoUI('servidor');
+            UI_setLoading('sync', false, { defaultText: "ENVIADO COM SUCESSO ✓" });
+            
+            // Marca como sincronizado no histórico local
+            const db = await DB_API.openDB();
+            const tx = db.transaction("vistorias", "readwrite");
+            APP_STATE.sincronizado = true;
+            await tx.objectStore("vistorias").put(JSON.parse(JSON.stringify(APP_STATE)));
+            
+            document.getElementById('btn-sync').style.backgroundColor = "#9ca3af";
+        } else {
+            throw new Error(resultado.message || "Erro no servidor");
+        }
 
     } catch (error) {
         console.error("Erro na sincronização:", error);
-        alert("Falha ao enviar dados. Verifique a conexão com o servidor.");
+        alert("Falha ao enviar dados: " + error.message);
         UI_setLoading('sync', false, { defaultText: "TENTAR ENVIAR NOVAMENTE" });
     }
 }
@@ -872,16 +862,15 @@ function UI_setLoading(action, isLoading, config = {}) {
     const btn = document.getElementById(`btn-${action}`);
     const textSpan = document.getElementById(`${action}-text`);
     const spinner = document.getElementById(`${action}-spinner`);
-
     if (!btn) return;
 
     btn.disabled = isLoading;
     if (isLoading) {
-        if(textSpan) textSpan.innerText = config.loadingText || "PROCESSANDO...";
-        if(spinner) spinner.classList.remove('hidden');
+        textSpan.innerText = config.loadingText || "PROCESSANDO...";
+        if (spinner) spinner.classList.remove('hidden');
     } else {
-        if(textSpan) textSpan.innerText = config.defaultText;
-        if(spinner) spinner.classList.add('hidden');
+        textSpan.innerText = config.defaultText;
+        if (spinner) spinner.classList.add('hidden');
     }
 }
 /**
@@ -993,67 +982,67 @@ async function sincronizarVisitasPendentes() {
 // Ouvinte para quando a internet retornar
 window.addEventListener('online', sincronizarVisitasPendentes);
 // ============================================================
+/**
+ * Retorna para a tela de formulário mantendo o roteiro que estava selecionado
+ */
+function voltarParaFormulario() {
+    if (APP_STATE.tipoRoteiro) {
+        showScreen('screen-formulario');
+    } else {
+        showScreen('screen-select-roteiro');
+    }
+}
 
-// CONFIRMAR NOVA VISTORIA
+/**
+ * Reseta o estado para uma nova vistoria (usado no botão de arquivar)
+ */
+function confirmarNovaVistoria() {
+    if (confirm("Deseja arquivar esta vistoria e iniciar uma nova? Os dados não enviados serão perdidos localmente.")) {
+        localStorage.removeItem("APP_META");
+        location.reload(); // Recarrega o app do zero
+    }
+}
+// --- FINALIZAÇÃO E ARQUIVAMENTO (SUA FUNÇÃO MELHORADA) ---
 async function confirmarNovaVistoria() {
-    // Dentro da confirmarNovaVistoria, antes do reload:
-const circle = document.getElementById('status-icon-circle');
-const symbol = document.getElementById('status-icon-symbol');
-if(circle) circle.className = "w-20 h-20 bg-amber-100 text-amber-600 rounded-full flex items-center justify-center mx-auto mb-4";
-if(symbol) symbol.innerText = "⏳";
+    const circle = document.getElementById('status-icon-circle');
+    const symbol = document.getElementById('status-icon-symbol');
+    
     if (!confirm("Deseja arquivar esta vistoria e iniciar uma nova?")) return;
 
-    try {
-        // 1. Abrir o banco manualmente aqui para garantir conexão ativa
-        const db = await DB_API.openDB();
-        
-        // 2. Capturar o ID de forma ultra-segura
-        const idAtual = APP_STATE.id_visita || localStorage.getItem("id_visita") || `VIST_${Date.now()}`;
+    if(circle) circle.className = "w-20 h-20 bg-amber-100 text-amber-600 rounded-full flex items-center justify-center mx-auto mb-4";
+    if(symbol) symbol.innerText = "⏳";
 
-        // 3. Criar o pacote de dados "limpo" (sem funções ou lixo do JS)
+    try {
+        const db = await DB_API.openDB();
+        const idAtual = APP_STATE.id_visita || APP_STATE.id_vistoria || `VIST_${Date.now()}`;
+
         const pacoteParaArquivar = {
             id_vistoria: String(idAtual),
             avaliador: String(APP_STATE.avaliador || "Não Informado"),
             local: String(APP_STATE.local || "Não Informado"),
             colaborador: String(APP_STATE.colaborador || ""),
             data: APP_STATE.data || new Date().toISOString().split('T')[0],
-            respostas: APP_STATE.respostas, // Salva direto as respostas
+            respostas: JSON.parse(JSON.stringify(APP_STATE.respostas)), 
             tipoRoteiro: APP_STATE.tipoRoteiro,
-            sincronizado: 0, // Usar 0 ou 1 facilita filtros no IndexedDB e no R
+            sincronizado: 0,
             timestamp: Date.now()
         };
 
         const tx = db.transaction(["vistorias"], "readwrite");
         const store = tx.objectStore("vistorias");
-        
-        // 4. Tentar o salvamento
-        const request = store.put(pacoteParaArquivar);
-
-        request.onsuccess = () => {
-            console.log("✅ Vistoria salva no histórico local com sucesso!");
-        };
+        store.put(pacoteParaArquivar);
 
         tx.oncomplete = () => {
-            // Preservamos apenas o essencial para a próxima vistoria
             const avaliadorOld = APP_STATE.avaliador;
-    
-            // Em vez de clear(), removemos apenas as chaves de rascunho
-            const keysToRemove = ["id_visita", "id_vistoria", "APP_META"];
-            keysToRemove.forEach(k => localStorage.removeItem(k));
-    
+            ["id_visita", "id_vistoria", "APP_META"].forEach(k => localStorage.removeItem(k));
             if (avaliadorOld) localStorage.setItem("avaliador", avaliadorOld);
-    
+            
             alert("Vistoria arquivada com sucesso!");
             location.reload(); 
-    };
-        tx.onerror = (e) => {
-            console.error("Erro na transação:", e.target.error);
-            throw new Error("Erro no IndexedDB: " + e.target.error);
         };
-
     } catch (err) {
         console.error("Erro ao arquivar:", err);
-        alert("ERRO CRÍTICO: Não foi possível salvar no histórico. Verifique o Console.");
+        alert("ERRO CRÍTICO: Não foi possível salvar no histórico.");
     }
 }
 window.savePhotoToDB = async (fotoId, blob, idPergunta, base64) => {
@@ -1103,9 +1092,8 @@ window.registrarResposta = registrarResposta;
 window.gerenciarMudancaCheckbox = gerenciarMudancaCheckbox;
 window.baixarExcelConsolidado = baixarExcelConsolidado; 
 window.sincronizarComBanco = sincronizarComBanco;
-window.handleSincronizacao = handleSincronizacao;
-window.handleExcelReativo = handleExcelReativo;
 window.confirmarNovaVistoria = confirmarNovaVistoria;
+window.voltarParaFormulario = voltarParaFormulario;
 window.validarEComecar = validarEComecar;
 
 
