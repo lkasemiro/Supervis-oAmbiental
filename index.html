@@ -156,13 +156,14 @@
     </section>
 
     <section id="screen-final" class="max-w-xl mx-auto hidden min-h-screen flex flex-col justify-center text-center">
-        <div class="bg-white p-8 rounded-[3rem] shadow-2xl border border-gray-50">
-            <div class="w-20 h-20 bg-green-100 text-green-600 rounded-full flex items-center justify-center mx-auto mb-4">
-                <span class="text-4xl">✓</span>
-            </div>
-            <h2 class="text-2xl font-black text-gray-800 mb-1">TUDO PRONTO!</h2>
-            <p class="text-gray-400 text-xs mb-8">Os dados foram salvos no seu celular.</p>
+    <div class="bg-white p-8 rounded-[3rem] shadow-2xl border border-gray-50">
+        
+        <div id="status-icon-circle" class="w-20 h-20 bg-amber-100 text-amber-600 rounded-full flex items-center justify-center mx-auto mb-4 transition-colors duration-500">
+            <span id="status-icon-symbol" class="text-4xl">⏳</span>
+        </div>
 
+        <h2 id="status-final-title" class="text-2xl font-black text-gray-800 mb-1">QUASE LÁ!</h2>
+        <p id="status-final-text" class="text-gray-400 text-xs mb-8 font-medium">Os dados foram salvos no celular, mas ainda não foram enviados.</p>
             <div class="space-y-3">
                 <button onclick="sincronizarComBanco()" id="btn-sync" class="bg-[#0067ac] text-white flex items-center justify-center gap-2">
                     ENVIAR PARA O SERVIDOR ☁️
