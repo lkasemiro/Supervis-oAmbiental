@@ -1,4 +1,4 @@
-const CACHE_NAME = 'cedae-vistorias-v15'; 
+const CACHE_NAME = 'cedae-vistorias-v16';
 const ASSETS_TO_CACHE = [
   './',
   './index.html',
@@ -11,53 +11,52 @@ const ASSETS_TO_CACHE = [
   './lib/exceljs.min.js'
 ];
 
-// Instalação
+// Instalação: Tenta cachear, mas não trava se um arquivo falhar
 self.addEventListener('install', (event) => {
+  self.skipWaiting(); // Força o novo SW a assumir o controle
   event.waitUntil(
     caches.open(CACHE_NAME).then((cache) => {
-      return cache.addAll(ASSETS_TO_CACHE);
-    })
-  );
-  self.skipWaiting();
-});
-
-// Ativação: Limpa caches antigos (Boa prática!)
-self.addEventListener('activate', (event) => {
-  event.waitUntil(
-    caches.keys().then((cacheNames) => {
-      return Promise.all(
-        cacheNames.map((cache) => {
-          if (cache !== CACHE_NAME) {
-            return caches.delete(cache);
-          }
-        })
+      // Usamos map para capturar erros individualmente e não derrubar o SW todo
+      return Promise.allSettled(
+        ASSETS_TO_CACHE.map(url => 
+          cache.add(url).catch(err => console.error(`Falha ao cachear: ${url}`, err))
+        )
       );
     })
   );
 });
 
-// Fetch com filtro de extensão
-self.addEventListener('fetch', (event) => {
-  // 1. Ignora POST (Sincronização) e outros métodos
-  if (event.request.method !== 'GET') return;
+// Ativação: Limpa caches e assume controle total das abas abertas
+self.addEventListener('activate', (event) => {
+  event.waitUntil(
+    caches.keys().then((cacheNames) => {
+      return Promise.all(
+        cacheNames.filter(name => name !== CACHE_NAME).map(name => caches.delete(name))
+      );
+    }).then(() => self.clients.claim()) // Faz o SW controlar a página imediatamente
+  );
+});
 
-  // 2. FILTRO CRÍTICO: Ignora extensões e protocolos não-web (Corrige seu erro)
+// Fetch: Estratégia Stale-While-Revalidate (Entrega rápido, atualiza no fundo)
+self.addEventListener('fetch', (event) => {
+  if (event.request.method !== 'GET') return;
+  
   const url = event.request.url;
-  if (!url.startsWith('http')) return; 
+  if (!url.startsWith('http')) return;
 
   event.respondWith(
-    caches.match(event.request).then((cachedResponse) => {
-      const fetchPromise = fetch(event.request).then((networkResponse) => {
-        if (networkResponse && networkResponse.status === 200) {
-          const responseClone = networkResponse.clone();
-          caches.open(CACHE_NAME).then((cache) => cache.put(event.request, responseClone));
-        }
-        return networkResponse;
-      }).catch(() => {
-        console.log("Offline: Usando cache para", url);
-      });
+    caches.open(CACHE_NAME).then((cache) => {
+      return cache.match(event.request).then((cachedResponse) => {
+        const fetchPromise = fetch(event.request).then((networkResponse) => {
+          if (networkResponse && networkResponse.status === 200) {
+            cache.put(event.request, networkResponse.clone());
+          }
+          return networkResponse;
+        }).catch(() => cachedResponse); // Se cair a rede e não tiver cache, retorna o que der
 
-      return cachedResponse || fetchPromise;
+        // Retorna o cache IMEDIATAMENTE ou espera a rede se estiver vazio
+        return cachedResponse || fetchPromise;
+      });
     })
   );
 });
