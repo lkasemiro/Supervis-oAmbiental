@@ -11,13 +11,17 @@
     
     <link rel="manifest" href="manifest.json">
     
-    <link rel="apple-touch-icon" href="icons/icon-192x192.png">
-    
+    <link rel="preload" href="lib/tailwind.js" as="script">
+    <link rel="preload" href="lib/exceljs.min.js" as="script">
+
     <script src="lib/tailwind.js"></script>
     <script src="lib/exceljs.min.js"></script>
-
-    <link rel="icon" href="data:,">
     
+    <link rel="apple-touch-icon" href="icons/icon-192x192.png">
+    
+    <link rel="icon" type="image/png" sizes="32x32" href="icon.png">
+
+ 
     <style>
         :root { --blue-cedae: #0067ac; }
         body { margin: 0; padding-top: env(safe-area-inset-top); background: #ffffff; font-family: sans-serif; -webkit-tap-highlight-color: transparent; }
