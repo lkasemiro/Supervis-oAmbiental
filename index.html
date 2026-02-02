@@ -59,7 +59,7 @@
             <input id="avaliador" type="text" placeholder="Nome do Avaliador" class="bg-gray-50 px-4 border-none outline-none focus:ring-2 focus:ring-blue-100">
             <select id="local" class="bg-gray-50 px-4 border-none outline-none"></select>
             <div class="grid grid-cols-2 gap-3">
-                <input id="data_visita" type="date" class="bg-gray-50 px-4 text-sm border-none outline-none">
+                <input id="data_visita" type="date" class="bg-gray-60 px-4 text-sm border-none outline-none">
                 <input id="colaborador" type="text" placeholder="Acompanhante" class="bg-gray-50 px-4 text-sm border-none outline-none">
             </div>
             <button onclick="validarEComecar()" class="bg-[#0067ac] text-white font-bold shadow-lg active:scale-95 transition-all">INICIAR AGORA</button>
@@ -115,8 +115,7 @@
             <button onclick="showScreen('screen-final')" class="bg-green-600 text-white shadow-xl font-bold active:scale-95 transition-all">CONCLUIR VISTORIA</button>
         </div>
     </section>
-
-    <section id="screen-final" class="max-w-xl mx-auto hidden min-h-screen flex flex-col justify-center p-6 text-center animate-in">
+<section id="screen-final" class="max-w-xl mx-auto hidden min-h-screen flex flex-col justify-center p-6 text-center animate-in">
         <div class="bg-white p-8 rounded-[3rem] shadow-2xl border border-gray-50">
             <div id="status-icon-circle" class="w-20 h-20 bg-amber-100 text-amber-600 rounded-full flex items-center justify-center mx-auto mb-4 transition-all duration-500">
                 <span id="status-icon-symbol" class="text-4xl">⏳</span>
@@ -125,8 +124,15 @@
             <p id="status-final-text" class="text-gray-400 text-[11px] mb-8">Os dados estão seguros no seu aparelho.</p>
             
             <div class="space-y-3">
-                <button onclick="sincronizarComBanco()" id="btn-sync" class="bg-[#0067ac] text-white font-bold active:scale-95 transition-all">ENVIAR PARA O SERVIDOR ☁️</button>
-                <button onclick="baixarExcelConsolidado()" id="btn-excel" class="bg-emerald-600 text-white font-bold active:scale-95 transition-all">BAIXAR RELATÓRIO EXCEL 📊</button>
+                <button onclick="sincronizarComBanco()" id="btn-sync" class="bg-[#0067ac] text-white font-bold active:scale-95 transition-all flex items-center justify-center gap-2">
+                    <span id="sync-spinner" class="hidden animate-spin">🌀</span>
+                    <span id="sync-text">ENVIAR PARA O SERVIDOR ☁️</span>
+                </button>
+
+                <button onclick="baixarExcelConsolidado()" id="btn-excel" class="bg-emerald-600 text-white font-bold active:scale-95 transition-all flex items-center justify-center gap-2">
+                    <span id="excel-spinner" class="hidden animate-spin">⏳</span>
+                    <span id="excel-text">BAIXAR RELATÓRIO EXCEL 📊</span>
+                </button>
                 
                 <div class="pt-4 space-y-2">
                     <button onclick="showScreen('screen-formulario')" class="!min-h-0 py-3 text-[#0067ac] font-bold text-xs">← EDITAR RESPOSTAS</button>
@@ -135,6 +141,8 @@
                 </div>
             </div>
         </div>
+        
+        <div id="status-sinc" class="hidden"></div>
     </section>
 
     <script src="roteiros.js"></script>
@@ -142,19 +150,22 @@
     <script src="app.js"></script>
 
     <script>
-        // Lógica Discreta de Conexão
+        // Lógica de Conexão
         function atualizarRede() {
             const dot = document.getElementById('connection-dot');
             const texto = document.getElementById('connection-text');
+            if (!dot || !texto) return;
             
             if (navigator.onLine) {
                 dot.className = "dot bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.4)]";
                 texto.innerText = "Sinal Online";
-                texto.classList.replace('text-orange-700', 'text-green-700');
+                texto.classList.remove('text-orange-700');
+                texto.classList.add('text-green-700');
             } else {
                 dot.className = "dot bg-yellow-400 shadow-[0_0_8px_rgba(250,204,21,0.4)] animate-pulse";
                 texto.innerText = "Sinal Fraco / Local";
-                texto.classList.replace('text-green-700', 'text-orange-700');
+                texto.classList.remove('text-green-700');
+                texto.classList.add('text-orange-700');
             }
         }
         window.addEventListener('online', atualizarRede);

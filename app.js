@@ -1,7 +1,7 @@
 /// ============================================================
 // APP.JS – VERSÃO INTEGRAL CORRIGIDA (ORGANIZADA POR FLUXO)
 // ============================================================
-
+// ============================================================
 
 // ============================================================
 // 1. CONSTANTES E ESTADO GLOBAL
@@ -29,7 +29,6 @@ id_vistoria: null
 let stream = null;
 let currentPhotoInputId = null;
 
-
 // ============================================================
 // 2. CONTROLE DE TELAS E NAVEGAÇÃO
 // ============================================================
@@ -44,52 +43,60 @@ window.scrollTo(0, 0);
 // 3. BOOTSTRAP DO APLICATIVO
 // ============================================================
 // Função de suporte para recuperar metadados leves
-// Suporte para recuperar metadados
 function carregarMetaDoLocalStorage() {
     const metaStr = localStorage.getItem("APP_META");
-    if (!metaStr) return;
+    if (metaStr) {
+        try {
+            const meta = JSON.parse(metaStr);
+            APP_STATE.avaliador = meta.avaliador || "";
+            APP_STATE.local = meta.local || "";
+            APP_STATE.id_visita = meta.id_visita || "";
+            APP_STATE.data = meta.data || "";
 
-    try {
-        const meta = JSON.parse(metaStr);
-        APP_STATE.avaliador = meta.avaliador || "";
-        APP_STATE.local = meta.local || "";
-        APP_STATE.id_vistoria = meta.id_vistoria || ""; // Corrigido typo 'visitoria'
-        APP_STATE.data = meta.data || "";
-
-        // Preenche campos com segurança (Optional Chaining)
-        const elAval = document.getElementById("avaliador");
-        const elLocal = document.getElementById("local");
-        const elData = document.getElementById("data_visita");
-        
-        if (elAval) elAval.value = APP_STATE.avaliador;
-        if (elLocal) elLocal.value = APP_STATE.local;
-        if (elData) elData.value = APP_STATE.data;
-    } catch (e) {
-        console.error("Erro ao ler APP_META:", e);
+            // Preenche os campos da tela de cadastro se existirem
+            const elAval = document.getElementById("avaliador");
+            const elLocal = document.getElementById("local");
+            const elData = document.getElementById("data_visita");
+            
+            if (elAval) elAval.value = APP_STATE.avaliador;
+            if (elLocal) elLocal.value = APP_STATE.local;
+            if (elData) elData.value = APP_STATE.data;
+        } catch (e) {
+            console.error("Erro ao ler APP_META:", e);
+        }
     }
 }
-
 async function initApp() {
     console.log("🚀 Iniciando App...");
     
+    // 1. Carrega o que estiver no LocalStorage (Metadados rápidos)
     carregarMetaDoLocalStorage();
 
-    // Carrega progresso do IndexedDB
-    if (window.DB_API?.loadVisita) {
+    // 2. Carrega o progresso pesado do IndexedDB
+    if (window.DB_API && window.DB_API.loadVisita) {
         try {
             const dadosSalvos = await DB_API.loadVisita();
             if (dadosSalvos) {
+                // Sincroniza respostas
                 APP_STATE.respostas = dadosSalvos.respostas || APP_STATE.respostas;
-                APP_STATE.id_vistoria = dadosSalvos.id_vistoria || localStorage.getItem("id_vistoria");
+                
+                // UNIFICAÇÃO DE CHAVE: Garante que id_vistoria seja a oficial
+                APP_STATE.id_vistoria = dadosSalvos.id_vistoria || dadosSalvos.id_visita || localStorage.getItem("id_vistoria");
             }
         } catch (err) {
-            console.warn("Sem dados no IndexedDB.");
+            console.warn("Sem dados no IndexedDB, iniciando limpo.");
         }
     }
 
-    // Configuração do Seletor de Local
+    // 3. SE NÃO EXISTIR ID, CRIA AGORA (Evita o erro de Chave Nula no celular)
+    if (!APP_STATE.id_vistoria) {
+        APP_STATE.id_vistoria = `VIST_${Date.now()}`;
+        localStorage.setItem("id_vistoria", APP_STATE.id_vistoria);
+    }
+
+    // 4. Configuração do Seletor (Mantido seu código original)
     const selLocal = document.getElementById("local");
-    if (selLocal && typeof LOCAIS_VISITA !== 'undefined') {
+    if (selLocal) {
         selLocal.innerHTML = `<option disabled selected value="">Selecionar Local...</option>` +
             LOCAIS_VISITA.map(l => `<option value="${l}">${l}</option>`).join("");
         
@@ -101,18 +108,13 @@ async function initApp() {
         };
     }
 
-    // Direcionamento de Tela
+    // 5. Direcionamento de Tela
     if (APP_STATE.local && APP_STATE.avaliador) {
         showScreen("screen-select-roteiro");
     } else {
         showScreen("screen-cadastro");
     }
 }
-
-// Inicia o app apenas quando o DOM estiver pronto
-document.addEventListener("DOMContentLoaded", initApp);
-
-
 function validarEComecar() {
     const elAval = document.getElementById("avaliador");
     const elLocal = document.getElementById("local");
@@ -129,7 +131,7 @@ function validarEComecar() {
     APP_STATE.local = elLocal.value;
     APP_STATE.data = elData.value;
     APP_STATE.colaborador = elColab ? elColab.value : "";
-    APP_STATE.id_vistoria = `VIST_${Date.now()}`; // Cria o ID único aqui
+APP_STATE.id_vistoria = `VIST_${Date.now()}`; // Cria o ID único aqui
     localStorage.setItem("id_vistoria", APP_STATE.id_vistoria);
     
     registrarResposta(null, null); // Salva os metadados iniciais
@@ -802,20 +804,25 @@ async function baixarExcelConsolidado() {
 // ============================================================
 async function handleSincronizacao() {
     if (!navigator.onLine) {
-        alert("Sem conexão à internet! Conecte-se para enviar ao servidor.");
+        alert("Sem conexão! Dados salvos localmente.");
         return;
     }
 
     UI_setLoading('sync', true, { loadingText: "A ENVIAR DADOS..." });
 
     try {
-        // Busca todas as fotos da vistoria atual de uma vez
         const fotosParaEnviar = await DB_API.getAllFotosVistoria(APP_STATE.id_vistoria);
         
+        // MAPEAMENTO PARA O SQL DA CEDAE
         const dadosCompletos = {
-            ...APP_STATE,
-            fotos_coletadas: fotosParaEnviar,
-            timestamp_envio: new Date().toISOString()
+            id_vistoria: String(APP_STATE.id_vistoria),
+            tecnico: String(APP_STATE.avaliador || "Não Informado"), // Mapeado para 'tecnico'
+            local: String(APP_STATE.local || "Não Informado"),       // Mapeado para 'local'
+            atividade: String(APP_STATE.atividade || "Supervisão Ambiental"), // Sua nova coluna mestra
+            roteiro_id: String(APP_STATE.tipoRoteiro),               // Mapeado para 'roteiro_id'
+            data_hora: APP_STATE.data || new Date().toISOString(),
+            respostas: APP_STATE.respostas,
+            fotos: fotosParaEnviar.map(f => f.base64)
         };
 
         const response = await fetch('https://strapless-christi-unspread.ngrok-free.dev/vistorias/sincronizar', {
@@ -833,25 +840,23 @@ async function handleSincronizacao() {
             marcarComoConcluidoUI('servidor');
             UI_setLoading('sync', false, { defaultText: "ENVIADO COM SUCESSO ✓" });
             
-            // Marca como sincronizado no histórico local
+            // Marca sincronizado no IndexedDB
             const db = await DB_API.openDB();
             const tx = db.transaction("vistorias", "readwrite");
             APP_STATE.sincronizado = true;
             await tx.objectStore("vistorias").put(JSON.parse(JSON.stringify(APP_STATE)));
-            
-            document.getElementById('btn-sync').style.backgroundColor = "#9ca3af";
         } else {
             throw new Error(resultado.message || "Erro no servidor");
         }
 
     } catch (error) {
-        console.error("Erro na sincronização:", error);
-        alert("Falha ao enviar dados: " + error.message);
-        UI_setLoading('sync', false, { defaultText: "TENTAR ENVIAR NOVAMENTE" });
+        console.error("Erro:", error);
+        alert("Falha: " + error.message);
+        UI_setLoading('sync', false, { defaultText: "TENTAR NOVAMENTE" });
     }
 }
 
-/** Função Auxiliar de UI */
+/** Gerencia estados de botões e spinners */
 function UI_setLoading(action, isLoading, config = {}) {
     const btn = document.getElementById(`btn-${action}`);
     const textSpan = document.getElementById(`${action}-text`);
@@ -859,149 +864,179 @@ function UI_setLoading(action, isLoading, config = {}) {
     if (!btn) return;
 
     btn.disabled = isLoading;
+    btn.style.opacity = isLoading ? "0.7" : "1";
+
     if (isLoading) {
-        textSpan.innerText = config.loadingText || "PROCESSANDO...";
+        if (textSpan) textSpan.innerText = config.loadingText || "PROCESSANDO...";
         if (spinner) spinner.classList.remove('hidden');
     } else {
-        textSpan.innerText = config.defaultText;
+        if (textSpan) textSpan.innerText = config.defaultText;
         if (spinner) spinner.classList.add('hidden');
     }
 }
-/**
- * ATUALIZAÇÃO DA INTERFACE DE SUCESSO
- */
+
+/** Atualização visual após sucesso */
 function marcarComoConcluidoUI(metodo) {
     const circle = document.getElementById('status-icon-circle');
     const symbol = document.getElementById('status-icon-symbol');
     const title = document.getElementById('status-final-title');
     const text = document.getElementById('status-final-text');
 
-    // Animação de pulso
+    if (!circle || !symbol) return;
+
     circle.classList.add('scale-110');
     setTimeout(() => circle.classList.remove('scale-110'), 200);
 
-    // Muda Amarelo -> Verde
     circle.classList.replace('bg-amber-100', 'bg-green-500');
     circle.classList.replace('text-amber-600', 'text-white');
     
     symbol.innerText = "✓";
-    title.innerText = "SUCESSO!";
+    if (title) title.innerText = "SUCESSO!";
     
-    if (metodo === 'excel') {
-        text.innerText = "A planilha foi gerada e o download iniciado.";
-    } else {
-        text.innerText = "Os dados e fotos já estão no servidor da CEDAE.";
+    if (text) {
+        if (metodo === 'excel') {
+            text.innerText = "A planilha foi gerada e o download iniciado.";
+        } else {
+            const atividade = APP_STATE.atividade || "Supervisão Ambiental";
+            text.innerText = `Os dados de ${atividade} foram enviados ao servidor da CEDAE.`;
+        }
     }
 }
-
-
+// ============================================================
+// SINCRONIZAÇÃO MANUAL (BOTÃO ENVIAR)
+// ============================================================
 async function sincronizarComBanco() {
-    const btn = document.getElementById('btn-sync');
-    const syncText = document.getElementById('sync-text');
-    const spinner = document.getElementById('sync-spinner');
-
+    // 1. Verifica conexão antes de começar
     if (!navigator.onLine) {
-        alert("Você está offline. Conecte-se à internet para enviar.");
+        alert("Sem conexão à internet para enviar.");
         return;
     }
 
-    if(syncText) syncText.innerText = "ENVIANDO...";
-    if(spinner) spinner.classList.remove('hidden');
+    // 2. Ativa estado de carregamento no botão 'sync'
+    UI_setLoading('sync', true, { loadingText: "ENVIANDO AO SERVIDOR..." });
 
     try {
         const db = await DB_API.openDB();
         
-        // Pegamos TODAS as vistorias do banco local
+        // Busca vistorias do IndexedDB
         const vistorias = await new Promise((res) => {
             const tx = db.transaction("vistorias", "readonly");
             tx.objectStore("vistorias").getAll().onsuccess = (e) => res(e.target.result);
         });
 
-        // Filtra apenas a vistoria que estamos vendo agora e que ainda não subiu
+        // Filtra a vistoria específica que está aberta no estado do app
         const pendentes = vistorias.filter(v => v.id_vistoria === APP_STATE.id_vistoria && !v.sincronizado);
 
         if (pendentes.length === 0) {
             alert("Esta vistoria já foi enviada ou não foi encontrada.");
+            UI_setLoading('sync', false, { defaultText: "ENVIAR PARA O SERVIDOR" });
             return;
         }
 
         for (const visita of pendentes) {
-            // Buscamos as fotos vinculadas a esta visita específica no banco de fotos
-            const todasFotos = await new Promise((res) => {
-                const tx = db.transaction("fotos", "readonly");
-                tx.objectStore("fotos").getAll().onsuccess = (e) => res(e.target.result);
-            });
+            // Buscamos as fotos vinculadas
+            const fotos = await DB_API.getAllFotosVistoria(visita.id_vistoria);
             
-            const fotosDaVisita = todasFotos.filter(f => f.id_visita === visita.id_vistoria);
-            
-            // Montamos o pacote completo (Dados + Fotos)
-            const pacoteCompleto = { ...visita, fotos_base64: fotosDaVisita };
+            // Montamos o pacote final normalizado
+            const payload = {
+                ...visita,
+                tecnico: visita.avaliador || visita.tecnico,
+                local: visita.local,
+                atividade: visita.atividade || "Supervisão Ambiental",
+                roteiro_id: visita.tipoRoteiro,
+                fotos_base64: fotos.map(f => f.base64) 
+            };
 
             const response = await fetch('https://strapless-christi-unspread.ngrok-free.dev/vistorias/sincronizar', {
                 method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify(pacoteCompleto)
+                headers: { 
+                    "Content-Type": "application/json",
+                    "ngrok-skip-browser-warning": "true" 
+                },
+                body: JSON.stringify(payload)
             });
 
-            if (response.ok) {
-                // Marcar como sincronizado no banco local para não enviar duplicado depois
-                visita.sincronizado = 1;
+            const resposta = await response.json();
+
+            // SUCESSO OU JÁ SINCRONIZADA
+            if (response.ok || (resposta.mensagem && resposta.mensagem.includes("sincronizada"))) {
+                visita.sincronizado = true;
                 const txUp = db.transaction("vistorias", "readwrite");
                 await txUp.objectStore("vistorias").put(visita);
                 
                 marcarComoConcluidoUI('sync');
-                alert("Sucesso! Vistoria enviada ao servidor da CEDAE.");
             } else {
-                throw new Error("Servidor respondeu com erro.");
+                throw new Error(resposta.mensagem || "Erro no processamento do servidor");
             }
         }
+
+        UI_setLoading('sync', false, { defaultText: "ENVIADO COM SUCESSO ✓" });
+
     } catch (err) {
         console.error("Erro na sincronização:", err);
-        alert("Falha na conexão: Verifique se o servidor backend está ligado e o ngrok ativo.");
-    } finally {
-        if(syncText) syncText.innerText = "ENVIAR AO SERVIDOR";
-        if(spinner) spinner.classList.add('hidden');
+        alert("Erro: " + err.message);
+        UI_setLoading('sync', false, { defaultText: "TENTAR ENVIAR NOVAMENTE" });
     }
 }
-// ============================================================
-// 16. SINCRONIZAÇÃO AUTOMÁTICA AO VOLTAR ONLINE
-// ============================================================
 async function sincronizarVisitasPendentes() {
     if (!navigator.onLine) return;
+    console.log("🌐 Conexão restaurada! Iniciando sincronização em segundo plano...");
 
     const db = await DB_API.openDB();
     const tx = db.transaction("vistorias", "readonly");
     const store = tx.objectStore("vistorias");
+    
     const visitas = await new Promise(res => {
         const req = store.getAll();
         req.onsuccess = () => res(req.result);
     });
 
     for (let visita of visitas) {
-        if (visita.sincronizado) continue;
+        // Pula se já foi enviado ou se não tem ID
+        if (visita.sincronizado || !visita.id_vistoria) continue;
 
         try {
-            const res = await fetch('https://strapless-christi-unspread.ngrok-free.dev/vistorias/sincronizar',{
+            // [ADADEQUAÇÃO 1] Buscar as fotos vinculadas a esta visita específica
+            const fotos = await DB_API.getAllFotosVistoria(visita.id_vistoria);
+            
+            // [ADEQUAÇÃO 2] Normalizar o objeto para o padrão do Banco SQL (Atividade/Local/Tecnico)
+            const payload = {
+                id_vistoria: visita.id_vistoria,
+                tecnico: visita.avaliador || visita.tecnico || "Não identificado",
+                local: visita.local || "Não informado",
+                atividade: visita.atividade || "Supervisão Ambiental", // Valor padrão ou do estado
+                roteiro_id: visita.tipoRoteiro,
+                data_hora: visita.data || new Date().toISOString(),
+                respostas: visita.respostas,
+                fotos_base64: fotos.map(f => f.base64), // Inclui as imagens agora!
+                origem: "sincronizacao_automatica"
+            };
+
+            const res = await fetch('https://strapless-christi-unspread.ngrok-free.dev/vistorias/sincronizar', {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(visita)
+                headers: { 
+                    'Content-Type': 'application/json',
+                    'ngrok-skip-browser-warning': 'true' // [ADEQUAÇÃO 3] Essencial para o ngrok
+                },
+                body: JSON.stringify(payload)
             });
 
             if (res.ok) {
-    visita.sincronizado = true;
-    // Atualiza especificamente na tabela de histórico
-    const txUpdate = db.transaction("vistorias", "readwrite");
-    txUpdate.objectStore("vistorias").put(visita);
-    console.log(`✅ Visita ${visita.id_vistoria} sincronizada e marcada.`);
-}
+                const resultado = await res.json();
+                if (resultado.status === "sucesso") {
+                    // Atualiza no IndexedDB para não reenviar
+                    visita.sincronizado = true;
+                    const txUpdate = db.transaction("vistorias", "readwrite");
+                    await txUpdate.objectStore("vistorias").put(visita);
+                    console.log(`✅ Sincronização automática com sucesso: ${visita.id_vistoria}`);
+                }
+            }
         } catch (e) {
-            console.warn("Tentativa de sincronização automática falhou.");
+            console.error(`❌ Falha ao sincronizar visita ${visita.id_vistoria}:`, e);
+            // Não fazemos nada, tentará novamente na próxima vez que ficar online
         }
     }
 }
-
-// Ouvinte para quando a internet retornar
-window.addEventListener('online', sincronizarVisitasPendentes);
 // ============================================================
 /**
  * Retorna para a tela de formulário mantendo o roteiro que estava selecionado
@@ -1014,59 +1049,64 @@ function voltarParaFormulario() {
     }
 }
 
-/**
- * Reseta o estado para uma nova vistoria (usado no botão de arquivar)
- */
-function confirmarNovaVistoria() {
-    if (confirm("Deseja arquivar esta vistoria e iniciar uma nova? Os dados não enviados serão perdidos localmente.")) {
-        localStorage.removeItem("APP_META");
-        location.reload(); // Recarrega o app do zero
-    }
-}
-// --- FINALIZAÇÃO E ARQUIVAMENTO (SUA FUNÇÃO MELHORADA) ---
+//** * Finaliza a vistoria atual, salva no histórico (IndexedDB) e limpa a interface
 async function confirmarNovaVistoria() {
-    if (!confirm("Deseja arquivar esta vistoria e iniciar uma nova? Os dados salvos localmente continuarão no histórico.")) return;
-
     const circle = document.getElementById('status-icon-circle');
     const symbol = document.getElementById('status-icon-symbol');
     
-    if(circle) circle.className = "w-20 h-20 bg-amber-100 text-amber-600 rounded-full flex items-center justify-center mx-auto mb-4";
+    if (!confirm("Deseja arquivar esta vistoria e iniciar uma nova?")) return;
+
+    // Feedback visual de processamento
+    if(circle) circle.className = "w-20 h-20 bg-amber-100 text-amber-600 rounded-full flex items-center justify-center mx-auto mb-4 animate-pulse";
     if(symbol) symbol.innerText = "⏳";
 
     try {
         const db = await DB_API.openDB();
-        const idAtual = APP_STATE.id_vistoria || `VIST_${Date.now()}`;
+        // Garante um ID único para a nova entrada
+        const idAtual = APP_STATE.id_vistoria || APP_STATE.id_visita || `VIST_${Date.now()}`;
 
-        // Criamos o registro histórico antes de limpar o rascunho
         const pacoteParaArquivar = {
             id_vistoria: String(idAtual),
-            avaliador: String(APP_STATE.avaliador || "Não Informado"),
+            tecnico: String(APP_STATE.avaliador || APP_STATE.tecnico || "Não Informado"),
             local: String(APP_STATE.local || "Não Informado"),
-            colaborador: String(APP_STATE.colaborador || ""),
+            atividade: String(APP_STATE.atividade || "Supervisão Ambiental"),
             data: APP_STATE.data || new Date().toISOString().split('T')[0],
-            respostas: JSON.parse(JSON.stringify(APP_STATE.respostas)), 
+            respostas: JSON.parse(JSON.stringify(APP_STATE.respostas || {})), 
             tipoRoteiro: APP_STATE.tipoRoteiro,
-            sincronizado: 0,
+            sincronizado: APP_STATE.sincronizado ? 1 : 0,
             timestamp: Date.now()
         };
 
+        // Salva no IndexedDB
         const tx = db.transaction(["vistorias"], "readwrite");
         const store = tx.objectStore("vistorias");
-        store.put(pacoteParaArquivar);
+        await store.put(pacoteParaArquivar);
 
         tx.oncomplete = () => {
-            const avaliadorOld = APP_STATE.avaliador;
-            // Limpa rascunhos de navegação
-            ["id_visita", "id_vistoria", "APP_META"].forEach(k => localStorage.removeItem(k));
-            // Preserva o nome do avaliador para facilitar a próxima
-            if (avaliadorOld) localStorage.setItem("avaliador", avaliadorOld);
+            // --- LIMPEZA CRÍTICA ---
+            // 1. Remove IDs da sessão atual para que o reload gere novos
+            localStorage.removeItem("id_vistoria");
+            localStorage.removeItem("id_visita");
+            localStorage.removeItem("APP_META");
             
+            // 2. Preserva apenas o nome do avaliador para facilitar a próxima entrada
+            const avaliadorOld = APP_STATE.avaliador || APP_STATE.tecnico;
+            if (avaliadorOld) localStorage.setItem("avaliador", avaliadorOld);
+
+            // 3. Limpa visualmente os containers de fotos antes do reload (prevenção extra)
+            document.querySelectorAll('[id^="foto-container-"]').forEach(el => el.innerHTML = '');
+
             alert("Vistoria arquivada com sucesso!");
+            
+            // 4. Reinicia o app limpo
             location.reload(); 
         };
     } catch (err) {
         console.error("Erro ao arquivar:", err);
-        alert("ERRO: Não foi possível salvar no histórico local.");
+        alert("ERRO CRÍTICO: Verifique a conexão com o banco local.");
+        // Restaura ícone em caso de erro
+        if(circle) circle.classList.remove('animate-pulse');
+        if(symbol) symbol.innerText = "⚠️";
     }
 }
 window.savePhotoToDB = async (fotoId, blob, idPergunta, base64) => {
@@ -1104,22 +1144,34 @@ DB_API.getFotosPergunta = async (idPergunta) => {
         req.onerror = (e) => reject(e);
     });
 };
+// ============================================================
+// TRATAMENTO DE ERROS E STATUS
+// ============================================================
 
-if ('serviceWorker' in navigator) {
-    navigator.serviceWorker.register('./sw.js').then(reg => {
-        // Detecta se há um novo Service Worker esperando para ser ativado
-        reg.onupdatefound = () => {
-            const installingWorker = reg.installing;
-            installingWorker.onstatechange = () => {
-                if (installingWorker.state === 'installed' && navigator.serviceWorker.controller) {
-                    // Notifica o usuário de forma amigável
-                    alert("Nova versão do roteiro disponível! O app será reiniciado para atualizar.");
-                    window.location.reload();
-                }
-            };
-        };
-    });
+// 1. Função segura para atualizar status de texto
+function atualizarStatusTexto(msg) {
+    const el = document.getElementById('status-sinc');
+    if (el) {
+        el.innerText = msg;
+    } else {
+        // Se o elemento não existe, apenas logamos no console para não travar o app
+        console.log("Status log:", msg);
+    }
 }
+
+// 2. Monitor de Erros Globais (ajudará a debugar no celular)
+window.onerror = function (msg, url, line) {
+    // Ignora erros irrelevantes de extensões ou conexões repetidas
+    if (msg.includes("Script error")) return; 
+    
+    alert("ERRO NO APP: " + msg + "\nLinha: " + line);
+    return false; // Permite que o erro apareça no console também
+};
+
+// 3. Inicialização de status ao carregar
+document.addEventListener("DOMContentLoaded", () => {
+    atualizarStatusTexto("Sistema Pronto");
+});
 // ------------------------------------------------------------
 // VINCULAÇÕES GLOBAIS (FINAL DO ARQUIVO) - Versão Blindada
 // ------------------------------------------------------------
@@ -1134,9 +1186,7 @@ window.sincronizarComBanco = sincronizarComBanco;
 window.confirmarNovaVistoria = confirmarNovaVistoria;
 window.voltarParaFormulario = voltarParaFormulario;
 window.validarEComecar = validarEComecar;
+window.atualizarStatusTexto = atualizarStatusTexto;
 
-// Verifica se o elemento existe antes de tentar mudar o texto
-const elStatus = document.getElementById('status-sinc');
-if (elStatus) {
-    elStatus.innerText = "Sincronizando...";
-}
+document.addEventListener("DOMContentLoaded", initApp);
+
