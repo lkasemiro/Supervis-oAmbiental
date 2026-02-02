@@ -69,6 +69,67 @@ function carregarMetaDoLocalStorage() {
         }
     }
 }
+function gerarFormulario(tipo) {
+    const container = document.getElementById("container-perguntas");
+    if (!container) return;
+
+    // Limpa o formulário anterior
+    container.innerHTML = "";
+    APP_STATE.tipoRoteiro = tipo;
+
+    // Define qual roteiro usar
+    let perguntas = [];
+    if (tipo === 'geral') perguntas = window.ROTEIRO_GERAL || [];
+    if (tipo === 'pge') perguntas = window.ROTEIRO_PGE || [];
+    if (tipo === 'aa') perguntas = window.ROTEIRO_AA || [];
+
+    if (perguntas.length === 0) {
+        container.innerHTML = "<p class='text-red-500'>Erro: Roteiro não carregado ou vazio.</p>";
+        return;
+    }
+
+    // Renderiza cada pergunta
+    perguntas.forEach((p) => {
+        const div = document.createElement("div");
+        div.className = "mb-6 p-4 bg-white rounded-lg shadow-sm border-l-4 border-blue-600";
+        
+        // Recupera resposta existente se houver (para retomada)
+        let valorSalvo = "";
+        if (tipo === "pge") {
+            valorSalvo = APP_STATE.respostas.pge[`${p.id}_${p.Sublocal}`] || "";
+        } else {
+            valorSalvo = APP_STATE.respostas[tipo][p.id] || "";
+        }
+
+        div.innerHTML = `
+            <label class="block font-bold text-gray-700 mb-2">${p.Pergunta}</label>
+            ${p.Sublocal ? `<small class="text-blue-500 block mb-2 font-medium">📍 ${p.Sublocal}</small>` : ""}
+            
+            <textarea 
+                class="w-full p-2 border rounded-md focus:ring-2 focus:ring-blue-400" 
+                rows="2" 
+                placeholder="Sua resposta..."
+                onchange="registrarResposta('${p.id}', this.value, '${tipo}')"
+            >${valorSalvo}</textarea>
+
+            <div class="mt-3 flex items-center gap-3">
+                <button type="button" onclick="abrirCamera('${p.id}')" class="bg-gray-100 p-2 rounded-md hover:bg-gray-200">
+                    📸 Tirar Foto
+                </button>
+                <div id="foto-container-${p.id}" class="flex gap-2 flex-wrap">
+                    </div>
+            </div>
+        `;
+        container.appendChild(div);
+        
+        // Se houver fotos, carrega-as agora
+        atualizarListaFotos(p.id);
+    });
+
+    // Atualiza o título da tela
+    const titulo = document.getElementById("titulo-roteiro");
+    if (titulo) titulo.innerText = tipo.toUpperCase();
+}
 async function initApp() {
     console.log("🚀 Iniciando App...");
     
