@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+    <title>Supervisão Ambiental – CEDAE</title>
+    
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="DMA">
+    
+    <link rel="manifest" href="manifest.json">
+    
+    <link rel="apple-touch-icon" href="icons/icon-192x192.png">
+    
+    <script src="lib/tailwind.js"></script>
+    <script src="lib/exceljs.min.js"></script>
+
+    <link rel="icon" href="data:,">
+    
+    <style>
+        :root { --blue-cedae: #0067ac; }
+        body { margin: 0; padding-top: env(safe-area-inset-top); background: #ffffff; font-family: sans-serif; -webkit-tap-highlight-color: transparent; }
+        .hidden { display: none !important; }
+        input, select, button { border-radius: 16px; min-height: 56px; width: 100%; }
+        
+        /* Pílula de Conexão Discreta */
+        #connection-pill { 
+            position: fixed; top: calc(env(safe-area-inset-top) + 12px); left: 50%; transform: translateX(-50%);
+            border-radius: 50px; padding: 6px 16px; z-index: 1000; display: flex; align-items: center; gap: 8px;
+            background: rgba(255, 255, 255, 0.9); backdrop-filter: blur(8px);
+            box-shadow: 0 4px 12px rgba(0,0,0,0.05); border: 1px solid rgba(0,0,0,0.03);
+            transition: all 0.5s ease;
+        }
+        .dot { width: 8px; height: 8px; border-radius: 50%; }
+        .animate-in { animation: fadeIn 0.3s ease-out; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+    </style>
+</head>
+<body class="text-gray-900 overflow-x-hidden">
+
+    <div id="connection-pill">
+        <span id="connection-dot" class="dot bg-gray-400"></span>
+        <span id="connection-text" class="text-[9px] font-black uppercase tracking-tighter text-gray-500">Verificando...</span>
+    </div>
+
+    <section id="screen-cadastro" class="max-w-xl mx-auto min-h-screen flex flex-col p-6 pt-24 animate-in">
+        <div class="text-center mb-8">
+            <img src="icon.png" class="h-16 w-full object-contain mx-auto mb-4" alt="CEDAE">
+            <h1 class="text-2xl font-black text-[#0067ac]">VISTORIA TÉCNICA</h1>
+            <p class="text-blue-400 text-[10px] font-bold tracking-widest uppercase">Supervisão Ambiental</p>
+        </div>
+
+        <div class="space-y-4 mb-6 bg-white p-2 rounded-3xl">
+            <input id="avaliador" type="text" placeholder="Nome do Avaliador" class="bg-gray-50 px-4 border-none outline-none focus:ring-2 focus:ring-blue-100">
+            <select id="local" class="bg-gray-50 px-4 border-none outline-none"></select>
+            <div class="grid grid-cols-2 gap-3">
+                <input id="data_visita" type="date" class="bg-gray-50 px-4 text-sm border-none outline-none">
+                <input id="colaborador" type="text" placeholder="Acompanhante" class="bg-gray-50 px-4 text-sm border-none outline-none">
+            </div>
+            <button onclick="validarEComecar()" class="bg-[#0067ac] text-white font-bold shadow-lg active:scale-95 transition-all">INICIAR AGORA</button>
+        </div>
+
+        <div class="p-5 bg-slate-50 rounded-[2rem] border border-slate-100 mb-8">
+            <h3 class="text-slate-500 font-black text-[10px] uppercase mb-2 flex items-center gap-2">
+                <span class="text-yellow-500">🛡️</span> Nota de Segurança
+            </h3>
+            <p class="text-[11px] leading-relaxed text-slate-500">
+                O sinal de internet pode oscilar no local, mas isso <b>não interfere</b> no seu trabalho. 
+                Os dados são salvos no seu aparelho. Apenas lembre-se de <b>baixar o Excel</b> ao concluir cada visita.
+            </p>
+        </div>
+    </section>
+
+    <section id="screen-select-roteiro" class="max-w-xl mx-auto hidden min-h-screen flex flex-col justify-center p-6 space-y-4 animate-in">
+        <h2 class="text-[#0067ac] font-black text-center text-xl mb-6 uppercase">Escolha o Formulário</h2>
+        
+        <button onclick="selectRoteiro('geral')" class="p-6 bg-white shadow-md border-l-[10px] border-green-500 flex flex-col items-start justify-center text-left">
+            <span class="text-[10px] font-bold text-gray-400">OPÇÃO 01</span>
+            <span class="text-green-600 font-black text-lg">FORMULÁRIO GERAL</span>
+        </button>
+
+        <button onclick="selectRoteiro('pge')" class="p-6 bg-white shadow-md border-l-[10px] border-[#0067ac] flex flex-col items-start justify-center text-left">
+            <span class="text-[10px] font-bold text-gray-400">OPÇÃO 02</span>
+            <span class="text-[#0067ac] font-black text-lg leading-tight uppercase">Gerenciamento de Efluentes (PGE)</span>
+        </button>
+
+        <button onclick="selectRoteiro('aa')" class="p-6 bg-white shadow-md border-l-[10px] border-red-500 flex flex-col items-start justify-center text-left">
+            <span class="text-[10px] font-bold text-gray-400">OPÇÃO 03</span>
+            <span class="text-red-600 font-black text-lg">ACIDENTES AMBIENTAIS</span>
+        </button>
+    </section>
+
+    <section id="screen-formulario" class="max-w-3xl mx-auto hidden pb-40 p-4">
+        <div class="sticky top-4 bg-white/95 backdrop-blur-md z-40 border shadow-lg mb-6 p-4 rounded-3xl">
+            <div class="flex justify-between items-center mb-3">
+                <button onclick="showScreen('screen-select-roteiro')" class="!min-h-0 py-2 px-4 rounded-full text-gray-500 text-[10px] font-bold w-auto bg-gray-100">← MUDAR</button>
+                <span id="roteiro-atual-label" class="text-[9px] font-black bg-blue-100 text-blue-700 px-3 py-1 rounded-full uppercase tracking-tighter">...</span>
+            </div>
+            <div id="sublocal_box" class="hidden mb-2">
+                <select id="sublocal_select" class="border-blue-200 bg-blue-50/50 font-bold text-[#0067ac]"></select>
+            </div>
+            <div id="secao_box">
+                <select id="secao_select" class="border-gray-200 font-bold text-gray-600"></select>
+            </div>
+        </div>
+        
+        <div id="conteudo_formulario" class="space-y-6"></div>
+
+        <div class="fixed bottom-0 left-0 right-0 p-4 bg-gradient-to-t from-white via-white/80 to-transparent z-50">
+            <button onclick="showScreen('screen-final')" class="bg-green-600 text-white shadow-xl font-bold active:scale-95 transition-all">CONCLUIR VISTORIA</button>
+        </div>
+    </section>
+
+    <section id="screen-final" class="max-w-xl mx-auto hidden min-h-screen flex flex-col justify-center p-6 text-center animate-in">
+        <div class="bg-white p-8 rounded-[3rem] shadow-2xl border border-gray-50">
+            <div id="status-icon-circle" class="w-20 h-20 bg-amber-100 text-amber-600 rounded-full flex items-center justify-center mx-auto mb-4 transition-all duration-500">
+                <span id="status-icon-symbol" class="text-4xl">⏳</span>
+            </div>
+            <h2 id="status-final-title" class="text-2xl font-black text-gray-800 mb-1 uppercase tracking-tight leading-none">Vistoria Salva!</h2>
+            <p id="status-final-text" class="text-gray-400 text-[11px] mb-8">Os dados estão seguros no seu aparelho.</p>
+            
+            <div class="space-y-3">
+                <button onclick="sincronizarComBanco()" id="btn-sync" class="bg-[#0067ac] text-white font-bold active:scale-95 transition-all">ENVIAR PARA O SERVIDOR ☁️</button>
+                <button onclick="baixarExcelConsolidado()" id="btn-excel" class="bg-emerald-600 text-white font-bold active:scale-95 transition-all">BAIXAR RELATÓRIO EXCEL 📊</button>
+                
+                <div class="pt-4 space-y-2">
+                    <button onclick="showScreen('screen-formulario')" class="!min-h-0 py-3 text-[#0067ac] font-bold text-xs">← EDITAR RESPOSTAS</button>
+                    <hr class="border-gray-100">
+                    <button onclick="confirmarNovaVistoria()" class="!min-h-0 py-2 text-gray-300 text-[10px] font-black uppercase tracking-widest bg-transparent">Iniciar Outra Vistoria</button>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <script src="roteiros.js"></script>
+    <script src="indexedDB.js"></script>
+    <script src="app.js"></script>
+
+    <script>
+        // Lógica Discreta de Conexão
+        function atualizarRede() {
+            const dot = document.getElementById('connection-dot');
+            const texto = document.getElementById('connection-text');
+            
+            if (navigator.onLine) {
+                dot.className = "dot bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.4)]";
+                texto.innerText = "Sinal Online";
+                texto.classList.replace('text-orange-700', 'text-green-700');
+            } else {
+                dot.className = "dot bg-yellow-400 shadow-[0_0_8px_rgba(250,204,21,0.4)] animate-pulse";
+                texto.innerText = "Sinal Fraco / Local";
+                texto.classList.replace('text-green-700', 'text-orange-700');
+            }
+        }
+        window.addEventListener('online', atualizarRede);
+        window.addEventListener('offline', atualizarRede);
+        atualizarRede();
+    </script>
+</body>
+</html>
