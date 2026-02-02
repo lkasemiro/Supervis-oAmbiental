@@ -1,6 +1,5 @@
-/// ============================================================
+/// ===========================================================
 // APP.JS – VERSÃO INTEGRAL CORRIGIDA (ORGANIZADA POR FLUXO)
-// ============================================================
 // ============================================================
 
 // ============================================================
@@ -23,7 +22,8 @@ tipoRoteiro: null,
 sublocal: "",
 roteiro: [],
 respostas: { geral: {}, pge: {}, aa: {} },
-id_vistoria: null
+id_vistoria: null,
+sincronizado: false
 };
 
 let stream = null;
@@ -45,15 +45,18 @@ window.scrollTo(0, 0);
 // Função de suporte para recuperar metadados leves
 function carregarMetaDoLocalStorage() {
     const metaStr = localStorage.getItem("APP_META");
+    const idSolto = localStorage.getItem("id_vistoria"); // Recupera o ID que salvamos fora do JSON
+
     if (metaStr) {
         try {
             const meta = JSON.parse(metaStr);
             APP_STATE.avaliador = meta.avaliador || "";
             APP_STATE.local = meta.local || "";
-            APP_STATE.id_visita = meta.id_visita || "";
             APP_STATE.data = meta.data || "";
+            
+            // UNIFICAÇÃO: Prioriza o ID que estiver disponível
+            APP_STATE.id_vistoria = idSolto || meta.id_vistoria || meta.id_visita || "";
 
-            // Preenche os campos da tela de cadastro se existirem
             const elAval = document.getElementById("avaliador");
             const elLocal = document.getElementById("local");
             const elData = document.getElementById("data_visita");
@@ -69,48 +72,49 @@ function carregarMetaDoLocalStorage() {
 async function initApp() {
     console.log("🚀 Iniciando App...");
     
-    // 1. Carrega o que estiver no LocalStorage (Metadados rápidos)
+    // 1. Carrega metadados básicos
     carregarMetaDoLocalStorage();
 
-    // 2. Carrega o progresso pesado do IndexedDB
-    if (window.DB_API && window.DB_API.loadVisita) {
+    // 2. Tenta recuperar o progresso pesado (Respostas) do IndexedDB
+    if (window.DB_API && APP_STATE.id_vistoria) {
         try {
-            const dadosSalvos = await DB_API.loadVisita();
+            console.log("🔍 Buscando dados para ID:", APP_STATE.id_vistoria);
+            const dadosSalvos = await DB_API.loadVisita(APP_STATE.id_vistoria);
+            
             if (dadosSalvos) {
-                // Sincroniza respostas
+                // Restaura respostas e roteiro
                 APP_STATE.respostas = dadosSalvos.respostas || APP_STATE.respostas;
-                
-                // UNIFICAÇÃO DE CHAVE: Garante que id_vistoria seja a oficial
-                APP_STATE.id_vistoria = dadosSalvos.id_vistoria || dadosSalvos.id_visita || localStorage.getItem("id_vistoria");
+                APP_STATE.tipoRoteiro = dadosSalvos.tipoRoteiro || null;
+                console.log("✅ Progresso recuperado com sucesso.");
             }
         } catch (err) {
-            console.warn("Sem dados no IndexedDB, iniciando limpo.");
+            console.warn("Nenhum dado prévio no banco para este ID.");
         }
     }
 
-    // 3. SE NÃO EXISTIR ID, CRIA AGORA (Evita o erro de Chave Nula no celular)
+    // 3. SE NÃO EXISTIR ID (Primeira vez absoluta), CRIA AGORA
     if (!APP_STATE.id_vistoria) {
-        APP_STATE.id_vistoria = `VIST_${Date.now()}`;
+        APP_STATE.id_vistoria = `CEDAE_${Date.now()}`;
         localStorage.setItem("id_vistoria", APP_STATE.id_vistoria);
     }
 
-    // 4. Configuração do Seletor (Mantido seu código original)
+    // 4. Configura o seletor de locais (Populando o HTML)
     const selLocal = document.getElementById("local");
     if (selLocal) {
         selLocal.innerHTML = `<option disabled selected value="">Selecionar Local...</option>` +
             LOCAIS_VISITA.map(l => `<option value="${l}">${l}</option>`).join("");
-        
         if (APP_STATE.local) selLocal.value = APP_STATE.local;
-        
-        selLocal.onchange = () => {
-            APP_STATE.local = selLocal.value;
-            registrarResposta(null, null); 
-        };
     }
 
-    // 5. Direcionamento de Tela
+    // 5. Direcionamento de Tela Inteligente
     if (APP_STATE.local && APP_STATE.avaliador) {
-        showScreen("screen-select-roteiro");
+        // Se já escolheu o roteiro antes, vai direto pro formulário
+        if (APP_STATE.tipoRoteiro) {
+            gerarFormulario(APP_STATE.tipoRoteiro);
+            showScreen("screen-formulario");
+        } else {
+            showScreen("screen-select-roteiro");
+        }
     } else {
         showScreen("screen-cadastro");
     }
@@ -126,33 +130,57 @@ function validarEComecar() {
         return;
     }
 
-    // Atualiza Estado Global
+    // 1. ATUALIZA ESTADO GLOBAL
     APP_STATE.avaliador = elAval.value;
     APP_STATE.local = elLocal.value;
     APP_STATE.data = elData.value;
     APP_STATE.colaborador = elColab ? elColab.value : "";
-APP_STATE.id_vistoria = `VIST_${Date.now()}`; // Cria o ID único aqui
-    localStorage.setItem("id_vistoria", APP_STATE.id_vistoria);
-    
-    registrarResposta(null, null); // Salva os metadados iniciais
-    showScreen("screen-select-roteiro");
-}
 
+    // 2. SÓ CRIA NOVO ID SE NÃO EXISTIR UM ATIVO (Crucial para o Service/Retomada)
+    if (!APP_STATE.id_vistoria) {
+        APP_STATE.id_vistoria = `VIST_${Date.now()}`;
+        localStorage.setItem("id_vistoria", APP_STATE.id_vistoria);
+        console.log("🆕 Novo ID gerado:", APP_STATE.id_vistoria);
+    } else {
+        console.log("🔄 Retomando ID existente:", APP_STATE.id_vistoria);
+    }
+
+    // 3. PERSISTÊNCIA DOS METADADOS
+    const metaData = {
+        avaliador: APP_STATE.avaliador,
+        local: APP_STATE.local,
+        data: APP_STATE.data,
+        colaborador: APP_STATE.colaborador,
+        id_vistoria: APP_STATE.id_vistoria
+    };
+    localStorage.setItem("APP_META", JSON.stringify(metaData));
+    
+    // Salva no IndexedDB
+    registrarResposta(null, null); 
+    
+    // 4. DIRECIOMANENTO
+    // Se o usuário já tinha selecionado um roteiro antes de fechar o app, vai direto pra ele
+    if (APP_STATE.tipoRoteiro) {
+        gerarFormulario(APP_STATE.tipoRoteiro);
+        showScreen("screen-formulario");
+    } else {
+        showScreen("screen-select-roteiro");
+    }
+}
 
 /// ============================================================
 // 4. PERSISTÊNCIA DE RESPOSTAS (REVISADA)
 // ============================================================
 
 function registrarResposta(idPergunta, valor, tipoRoteiro) {
-    // 1. Identifica o roteiro ativo
     const roteiroAlvo = tipoRoteiro || APP_STATE.tipoRoteiro;
-    if (!roteiroAlvo) return; // Segurança contra chamadas prematuras
+    if (!roteiroAlvo) return;
 
     if (!APP_STATE.respostas[roteiroAlvo]) {
         APP_STATE.respostas[roteiroAlvo] = {};
     }
 
-    // 2. Registra o valor (se houver idPergunta)
+    // 1. Registro no estado global (Memória)
     if (idPergunta !== null) {
         if (roteiroAlvo === "pge") {
             const chaveComposta = `${idPergunta}_${APP_STATE.sublocal || 'Geral'}`;
@@ -162,45 +190,43 @@ function registrarResposta(idPergunta, valor, tipoRoteiro) {
         }
     }
 
-    // 3. SEGURANÇA DE CHAVE PRIMÁRIA (O Pulo do Gato)
-    // Forçamos o APP_STATE a ter a chave exata que o IndexedDB v7 espera: id_vistoria
-    const idFinal = APP_STATE.id_vistoria || APP_STATE.id_visita || localStorage.getItem("id_vistoria");
-    
-    // 4. Salva Metadados Leves (LocalStorage)
-    const metaData = {
-        avaliador: APP_STATE.avaliador,
-        local: APP_STATE.local,
-        id_vistoria: idFinal, // Padronizado
-        data: APP_STATE.data,
-        sublocal: APP_STATE.sublocal,
-        tipoRoteiro: APP_STATE.tipoRoteiro
-    };
-    
-    try {
-        localStorage.setItem("APP_META", JSON.stringify(metaData));
-        localStorage.setItem("id_vistoria", idFinal); // redundância de segurança
-    } catch (e) {
-        console.warn("LocalStorage cheio ou bloqueado.");
+    // 2. Garantia do Identificador Único
+    const idFinal = APP_STATE.id_vistoria || localStorage.getItem("id_vistoria");
+    if (!idFinal) {
+        console.error("Erro: id_vistoria não encontrado no momento do registro.");
+        return;
     }
 
-    // 5. PERSISTÊNCIA NO INDEXEDDB
-    // Criamos o objeto final garantindo que id_vistoria exista
-    if (window.DB_API && window.DB_API.saveVisita) {
-        const dadosParaSalvar = {
-            ...APP_STATE,
-            id_vistoria: idFinal // Injeção obrigatória para o keyPath
-        };
-        
-        // Removemos id_visita (opcional) para evitar confusão no futuro
-        delete dadosParaSalvar.id_visita;
+    // 3. Preparação do Objeto Limpo (Deep Copy)
+    // Isso evita erros de 'Clone Algorithm' no IndexedDB e limpa campos nulos
+    const dadosParaSalvar = {
+        id_vistoria: idFinal,
+        avaliador: APP_STATE.avaliador || "",
+        local: APP_STATE.local || "",
+        data_hora: APP_STATE.data || new Date().toISOString(),
+        tipoRoteiro: roteiroAlvo,
+        respostas: JSON.parse(JSON.stringify(APP_STATE.respostas)), // Limpeza profunda
+        sincronizado: false,
+        ultima_atualizacao: new Date().toISOString()
+    };
 
-        window.DB_API.saveVisita(dadosParaSalvar).catch(err => {
-            console.error("Erro ao salvar no IndexedDB:", err);
-            // No celular, mostramos o erro real se falhar
-            if(navigator.userAgent.includes("Mobi")) {
-                console.log("Falha no put: Verifique se o keyPath 'id_vistoria' é nulo.");
-            }
-        });
+    // 4. Persistência em LocalStorage (Metadados rápidos)
+    localStorage.setItem("APP_META", JSON.stringify({
+        avaliador: dadosParaSalvar.avaliador,
+        local: dadosParaSalvar.local,
+        id_vistoria: idFinal,
+        data: dadosParaSalvar.data_hora
+    }));
+
+    // 5. Persistência Robusta no IndexedDB
+    if (window.DB_API && window.DB_API.saveVisita) {
+        window.DB_API.saveVisita(dadosParaSalvar)
+            .then(() => console.log(`💾 Progresso salvo: ${idPergunta || 'Metadados'}`))
+            .catch(err => {
+                console.error("❌ Erro Crítico IndexedDB:", err);
+                // Alerta visual apenas se estiver no celular e falhar feio
+                if (window.innerWidth < 768) alert("Erro ao salvar progresso localmente.");
+            });
     }
 }
 // ============================================================
@@ -1056,20 +1082,19 @@ async function confirmarNovaVistoria() {
     
     if (!confirm("Deseja arquivar esta vistoria e iniciar uma nova?")) return;
 
-    // Feedback visual de processamento
     if(circle) circle.className = "w-20 h-20 bg-amber-100 text-amber-600 rounded-full flex items-center justify-center mx-auto mb-4 animate-pulse";
     if(symbol) symbol.innerText = "⏳";
 
     try {
         const db = await DB_API.openDB();
-        // Garante um ID único para a nova entrada
-        const idAtual = APP_STATE.id_vistoria || APP_STATE.id_visita || `VIST_${Date.now()}`;
+        // UNIFICAÇÃO: Usamos apenas id_vistoria
+        const idAtual = APP_STATE.id_vistoria || localStorage.getItem("id_vistoria") || `VIST_${Date.now()}`;
 
         const pacoteParaArquivar = {
             id_vistoria: String(idAtual),
-            tecnico: String(APP_STATE.avaliador || APP_STATE.tecnico || "Não Informado"),
+            tecnico: String(APP_STATE.avaliador || "Não Informado"),
             local: String(APP_STATE.local || "Não Informado"),
-            atividade: String(APP_STATE.atividade || "Supervisão Ambiental"),
+            atividade: "Supervisão Ambiental",
             data: APP_STATE.data || new Date().toISOString().split('T')[0],
             respostas: JSON.parse(JSON.stringify(APP_STATE.respostas || {})), 
             tipoRoteiro: APP_STATE.tipoRoteiro,
@@ -1077,44 +1102,34 @@ async function confirmarNovaVistoria() {
             timestamp: Date.now()
         };
 
-        // Salva no IndexedDB
         const tx = db.transaction(["vistorias"], "readwrite");
-        const store = tx.objectStore("vistorias");
-        await store.put(pacoteParaArquivar);
+        await tx.objectStore("vistorias").put(pacoteParaArquivar);
 
         tx.oncomplete = () => {
-            // --- LIMPEZA CRÍTICA ---
-            // 1. Remove IDs da sessão atual para que o reload gere novos
+            // LIMPEZA DE SESSÃO
             localStorage.removeItem("id_vistoria");
-            localStorage.removeItem("id_visita");
+            localStorage.removeItem("id_visita"); // Limpa o nome antigo por segurança
             localStorage.removeItem("APP_META");
             
-            // 2. Preserva apenas o nome do avaliador para facilitar a próxima entrada
-            const avaliadorOld = APP_STATE.avaliador || APP_STATE.tecnico;
-            if (avaliadorOld) localStorage.setItem("avaliador", avaliadorOld);
-
-            // 3. Limpa visualmente os containers de fotos antes do reload (prevenção extra)
-            document.querySelectorAll('[id^="foto-container-"]').forEach(el => el.innerHTML = '');
+            // Preserva o técnico para não precisar digitar de novo
+            if (APP_STATE.avaliador) localStorage.setItem("avaliador_nome", APP_STATE.avaliador);
 
             alert("Vistoria arquivada com sucesso!");
-            
-            // 4. Reinicia o app limpo
             location.reload(); 
         };
     } catch (err) {
         console.error("Erro ao arquivar:", err);
-        alert("ERRO CRÍTICO: Verifique a conexão com o banco local.");
-        // Restaura ícone em caso de erro
-        if(circle) circle.classList.remove('animate-pulse');
-        if(symbol) symbol.innerText = "⚠️";
+        alert("Erro ao acessar banco local.");
     }
 }
 window.savePhotoToDB = async (fotoId, blob, idPergunta, base64) => {
     const db = await DB_API.openDB();
     
-    // Validação Crítica: Se não houver ID da vistoria, a foto se perde no limbo
-    if (!APP_STATE.id_visita) {
-        console.error("ERRO: Tentativa de salvar foto sem ID de vistoria ativa!");
+    // Pegamos o ID de qualquer uma das fontes disponíveis
+    const idAtivo = APP_STATE.id_vistoria || localStorage.getItem("id_vistoria");
+
+    if (!idAtivo) {
+        alert("Erro: ID de vistoria não encontrado. Tire a foto novamente.");
         return;
     }
 
@@ -1124,37 +1139,36 @@ window.savePhotoToDB = async (fotoId, blob, idPergunta, base64) => {
 
         store.put({
             foto_id: fotoId,
-            id_visita: APP_STATE.id_visita, 
-            pergunta_id: idPergunta, // Ex: "pge_01" ou "Vazamento Detectado"
+            id_vistoria: idAtivo, // Campo unificado
+            pergunta_id: idPergunta,
             sublocal: APP_STATE.sublocal || "Geral", 
-            base64, // O R vai usar este campo para salvar o arquivo físico .jpg
+            base64: base64,
             timestamp: Date.now()
         });
 
-        tx.oncomplete = () => {
-            console.log(`✅ Foto ${fotoId} vinculada à pergunta ${idPergunta}`);
-            resolve();
-        };
+        tx.oncomplete = () => resolve();
         tx.onerror = (e) => reject(e);
     });
 };
 
 DB_API.getFotosPergunta = async (idPergunta) => {
     const db = await DB_API.openDB();
-    return new Promise((resolve, reject) => {
+    const idAtivo = APP_STATE.id_vistoria || localStorage.getItem("id_vistoria");
+
+    return new Promise((resolve) => {
         const tx = db.transaction(['fotos'], 'readonly');
         const store = tx.objectStore('fotos');
         const req = store.getAll();
 
         req.onsuccess = () => {
-            // Filtra fotos que pertencem à vistoria atual E à pergunta específica
-            const fotosFiltradas = req.result.filter(f => 
-                f.id_visita === APP_STATE.id_visita && 
+            // Filtra garantindo que a foto pertence a ESTA vistoria e a ESTA pergunta
+            const fotos = req.result.filter(f => 
+                f.id_vistoria === idAtivo && 
                 f.pergunta_id === idPergunta
             );
-            resolve(fotosFiltradas);
+            resolve(fotos);
         };
-        req.onerror = (e) => reject(e);
+        req.onerror = () => resolve([]);
     });
 };
 // ============================================================
