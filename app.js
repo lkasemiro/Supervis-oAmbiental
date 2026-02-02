@@ -770,12 +770,14 @@ async function baixarExcelConsolidado() {
         for (const config of configuracao) {
             if (!config.fonte) continue;
             const sheet = workbook.addWorksheet(config.nome);
+            
+            // Estilização básica das colunas
             sheet.columns = [
                 { header: 'SEÇÃO', key: 'secao', width: 20 },
                 { header: 'SUBLOCAL', key: 'sublocal', width: 25 },
                 { header: 'PERGUNTA', key: 'pergunta', width: 50 },
                 { header: 'RESPOSTA', key: 'resposta', width: 40 },
-                { header: 'FOTOS (ANEXOS)', key: 'fotos', width: 25 }
+                { header: 'FOTOS (ANEXOS)', key: 'fotos', width: 30 }
             ];
 
             const respostasDoTipo = APP_STATE.respostas[config.id] || {};
@@ -788,6 +790,7 @@ async function baixarExcelConsolidado() {
                 // Busca fotos usando a função unificada do DB_API
                 const fotosFiltradas = await DB_API.getFotosPergunta(p.id);
 
+                // Se não tem resposta nem foto, pula a linha
                 if (!respostaTexto && fotosFiltradas.length === 0) continue;
 
                 const novaLinha = sheet.addRow({
@@ -797,34 +800,55 @@ async function baixarExcelConsolidado() {
                     resposta: String(respostaTexto)
                 });
 
+                // Lógica de Inserção de Imagens Corrigida
                 if (fotosFiltradas.length > 0) {
-                    novaLinha.height = 100;
-                    for (const foto of fotosFiltradas) {
-                        const arrayBuffer = await foto.blob.arrayBuffer();
-                        const imageId = workbook.addImage({ buffer: arrayBuffer, extension: 'jpeg' });
-                        sheet.addImage(imageId, {
-                            tl: { col: 4, row: novaLinha.number - 1 },
-                            ext: { width: 120, height: 120 }
-                        });
+                    novaLinha.height = 90; // Ajusta altura da linha para a foto caber
+
+                    for (let i = 0; i < fotosFiltradas.length; i++) {
+                        const foto = fotosFiltradas[i];
+                        
+                        // CORREÇÃO: Converter Base64 para Buffer em vez de usar .blob
+                        if (foto.base64) {
+                            try {
+                                // Remove o cabeçalho "data:image/jpeg;base64," se existir
+                                const base64Data = foto.base64.split(',')[1] || foto.base64;
+                                
+                                const imageId = workbook.addImage({
+                                    base64: base64Data,
+                                    extension: 'jpeg',
+                                });
+
+                                sheet.addImage(imageId, {
+                                    tl: { col: 4, row: novaLinha.number - 1 },
+                                    ext: { width: 100, height: 100 },
+                                    editAs: 'oneCell'
+                                });
+                            } catch (imgErr) {
+                                console.error("Erro ao processar imagem para Excel:", imgErr);
+                            }
+                        }
                     }
                 }
             }
         }
 
+        // Geração do arquivo
         const buffer = await workbook.xlsx.writeBuffer();
         const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
         const url = window.URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url;
         a.download = `Relatorio_${APP_STATE.local || 'Vistoria'}_${Date.now()}.xlsx`;
+        document.body.appendChild(a);
         a.click();
+        document.body.removeChild(a);
         
         marcarComoConcluidoUI('excel');
     } catch (err) {
+        console.error("Erro detalhado no Excel:", err);
         throw err;
     }
 }
-
 // ============================================================
 // 15. SINCRONIZAÇÃO UNIFICADA (R/PLUMBER)
 // ============================================================
