@@ -1111,36 +1111,49 @@ async function confirmarNovaVistoria() {
 }
 window.savePhotoToDB = async (fotoId, blob, idPergunta, base64) => {
     const db = await DB_API.openDB();
+    
+    // Validação Crítica: Se não houver ID da vistoria, a foto se perde no limbo
+    if (!APP_STATE.id_visita) {
+        console.error("ERRO: Tentativa de salvar foto sem ID de vistoria ativa!");
+        return;
+    }
+
     return new Promise((resolve, reject) => {
         const tx = db.transaction(['fotos'], 'readwrite');
         const store = tx.objectStore('fotos');
 
         store.put({
             foto_id: fotoId,
-            id_visita: APP_STATE.id_visita, // NOVO: Vínculo com a vistoria
-            pergunta_id: idPergunta,
-            sublocal: APP_STATE.sublocal || "Geral", // NOVO: Para o PGE
-            blob,
-            base64,
+            id_visita: APP_STATE.id_visita, 
+            pergunta_id: idPergunta, // Ex: "pge_01" ou "Vazamento Detectado"
+            sublocal: APP_STATE.sublocal || "Geral", 
+            base64, // O R vai usar este campo para salvar o arquivo físico .jpg
             timestamp: Date.now()
         });
-        tx.oncomplete = () => resolve();
+
+        tx.oncomplete = () => {
+            console.log(`✅ Foto ${fotoId} vinculada à pergunta ${idPergunta}`);
+            resolve();
+        };
         tx.onerror = (e) => reject(e);
     });
 };
-// Exemplo de como seu getFotosPergunta pode ser ajustado:
+
 DB_API.getFotosPergunta = async (idPergunta) => {
     const db = await DB_API.openDB();
-
     return new Promise((resolve, reject) => {
         const tx = db.transaction(['fotos'], 'readonly');
         const store = tx.objectStore('fotos');
         const req = store.getAll();
 
         req.onsuccess = () => {
-            resolve(req.result.filter(f => f.pergunta_id === idPergunta));
+            // Filtra fotos que pertencem à vistoria atual E à pergunta específica
+            const fotosFiltradas = req.result.filter(f => 
+                f.id_visita === APP_STATE.id_visita && 
+                f.pergunta_id === idPergunta
+            );
+            resolve(fotosFiltradas);
         };
-
         req.onerror = (e) => reject(e);
     });
 };
