@@ -1,4 +1,4 @@
-const CACHE_NAME = 'cedae-vistorias-v12';
+const CACHE_NAME = 'cedae-vistorias-v13'; // Incrementado para v13
 const ASSETS_TO_CACHE = [
   './',
   './index.html',
@@ -11,7 +11,7 @@ const ASSETS_TO_CACHE = [
   './lib/exceljs.min.js'
 ];
 
-// Instalação: Garante que tudo que é vital está no bolso do técnico
+// Instalação
 self.addEventListener('install', (event) => {
   event.waitUntil(
     caches.open(CACHE_NAME).then((cache) => {
@@ -21,9 +21,29 @@ self.addEventListener('install', (event) => {
   self.skipWaiting();
 });
 
-// Fetch com Stale-While-Revalidate
+// Ativação: Limpa caches antigos (Boa prática!)
+self.addEventListener('activate', (event) => {
+  event.waitUntil(
+    caches.keys().then((cacheNames) => {
+      return Promise.all(
+        cacheNames.map((cache) => {
+          if (cache !== CACHE_NAME) {
+            return caches.delete(cache);
+          }
+        })
+      );
+    })
+  );
+});
+
+// Fetch com filtro de extensão
 self.addEventListener('fetch', (event) => {
-  if (event.request.method !== 'GET') return; // Sincronização (POST) passa direto
+  // 1. Ignora POST (Sincronização) e outros métodos
+  if (event.request.method !== 'GET') return;
+
+  // 2. FILTRO CRÍTICO: Ignora extensões e protocolos não-web (Corrige seu erro)
+  const url = event.request.url;
+  if (!url.startsWith('http')) return; 
 
   event.respondWith(
     caches.match(event.request).then((cachedResponse) => {
@@ -34,8 +54,7 @@ self.addEventListener('fetch', (event) => {
         }
         return networkResponse;
       }).catch(() => {
-        // Se a rede falhar, o cachedResponse já será retornado pelo return abaixo
-        console.log("Offline: Usando cache para", event.request.url);
+        console.log("Offline: Usando cache para", url);
       });
 
       return cachedResponse || fetchPromise;
