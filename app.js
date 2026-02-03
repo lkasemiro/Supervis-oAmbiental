@@ -297,10 +297,8 @@ function montarSublocaisFiltrados(localEscolhido) {
     }
 };
 }
-// ============================================================
-// 8. IMAGEM DE APOIO (PGE)
-// ============================================================
 
+// 8. IMAGEM DE APOIO (PGE)
 function exibirImagemApoioSublocal(sublocal) {
     const containerForm = document.getElementById("conteudo_formulario");
     if (!containerForm) return;
@@ -369,11 +367,7 @@ function exibirImagemApoioSublocal(sublocal) {
         console.warn("⚠️ Nenhuma imagem de apoio encontrada nas perguntas de:", sublocal);
     }
 }
-
-// ============================================================
 // 9. RENDERIZAÇÃO DO FORMULÁRIO
-// ============================================================
-
 function renderFormulario(secaoFiltrada = null) {
     const container = document.getElementById("conteudo_formulario");
     if (!container) return;
@@ -417,7 +411,6 @@ function renderFormulario(secaoFiltrada = null) {
 }
 
 // 10. INPUT
-// ============================================================
 function renderInput(p, container, valorSalvo) {
     const tipoInput = p.TipoInput; 
     container.innerHTML = "";
@@ -694,7 +687,7 @@ function initCadastro() {
 
     if (APP_STATE.local && APP_STATE.avaliador) {
         // Recupera o ID se a página recarregar
-        APP_STATE.id_visita = localStorage.getItem("id_visita") || `VIST_${Date.now()}`;
+        APP_STATE.id_vistoria = localStorage.getItem("id_vistoria") || `VIST_${Date.now()}`;
         showScreen("screen-select-roteiro");
     } else {
         showScreen("screen-cadastro");
@@ -1251,5 +1244,7 @@ window.validarEComecar = validarEComecar;
 window.atualizarStatusTexto = atualizarStatusTexto;
 
 document.addEventListener("DOMContentLoaded", initApp);
+
+
 
 
