@@ -693,6 +693,7 @@ function initCadastro() {
         APP_STATE.avaliador = document.getElementById("avaliador").value;
         APP_STATE.local = document.getElementById("local").value;
         APP_STATE.data = document.getElementById("data_visita").value;
+        
         // GERAÇÃO DO ID ÚNICO PARA ESTA VISTORIA
         APP_STATE.id_visita = `VIST_${Date.now()}_${APP_STATE.local.replace(/\s+/g, '')}`;
 
@@ -702,7 +703,7 @@ function initCadastro() {
         localStorage.setItem("colaborador", APP_STATE.colaborador);
         localStorage.setItem("local", APP_STATE.local);
         localStorage.setItem("data", APP_STATE.data);
-        localStorage.setItem("id_visita", APP_STATE.id_visita);
+        localStorage.setItem("id_vistoria", APP_STATE.id_vistoria);
         
         showScreen("screen-select-roteiro");
     };
