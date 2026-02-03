@@ -1,10 +1,5 @@
 // APP.JS – VERSÃO INTEGRAL CORRIGIDA (ORGANIZADA POR FLUXO)
-// Silenciador de logs para performance em campo
-if (window.location.hostname !== "localhost") {
-    // console.log = function() {}; 
-    // Mantenha apenas os erros
-    console.warn = function() {};
-}
+
 // 1. CONSTANTES E ESTADO GLOBAL
 const LOCAIS_VISITA = [
     "Rio D'Ouro", "São Pedro", "Tinguá - Barrelão", "Tinguá - Serra Velha",
