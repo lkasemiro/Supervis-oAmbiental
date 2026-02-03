@@ -1112,9 +1112,12 @@ async function confirmarNovaVistoria() {
 window.savePhotoToDB = async (fotoId, blob, idPergunta, base64) => {
     const db = await DB_API.openDB();
     
-    // Validação Crítica: Se não houver ID da vistoria, a foto se perde no limbo
-    if (!APP_STATE.id_visita) {
-        console.error("ERRO: Tentativa de salvar foto sem ID de vistoria ativa!");
+    // Tenta recuperar o ID de todas as fontes possíveis para não dar erro
+    const idFinal = APP_STATE.id_vistoria || APP_STATE.id_visita || localStorage.getItem("id_vistoria") || localStorage.getItem("id_visita");
+
+    if (!idFinal) {
+        console.error("ERRO CRÍTICO: Tentativa de salvar foto sem ID de vistoria ativa!");
+        alert("Erro: ID da vistoria não encontrado. Por favor, reinicie o cadastro.");
         return;
     }
 
@@ -1124,21 +1127,20 @@ window.savePhotoToDB = async (fotoId, blob, idPergunta, base64) => {
 
         store.put({
             foto_id: fotoId,
-            id_vistoria: idFinal, 
-            pergunta_id: idPergunta, // Ex: "pge_01" ou "Vazamento Detectado"
+            id_visita: idFinal, // Usa o ID recuperado com sucesso
+            pergunta_id: idPergunta,
             sublocal: APP_STATE.sublocal || "Geral", 
-            base64, // O R vai usar este campo para salvar o arquivo físico .jpg
+            base64, 
             timestamp: Date.now()
         });
 
         tx.oncomplete = () => {
-            console.log(`✅ Foto ${fotoId} vinculada à pergunta ${idPergunta}`);
+            console.log(`✅ Foto ${fotoId} salva com ID: ${idFinal}`);
             resolve();
         };
         tx.onerror = (e) => reject(e);
     });
 };
-
 DB_API.getFotosPergunta = async (idPergunta) => {
     const db = await DB_API.openDB();
     return new Promise((resolve, reject) => {
