@@ -1,12 +1,6 @@
-/// ============================================================
 // APP.JS – VERSÃO INTEGRAL CORRIGIDA (ORGANIZADA POR FLUXO)
-// ============================================================
-// ============================================================
 
-// ============================================================
 // 1. CONSTANTES E ESTADO GLOBAL
-// ============================================================
-
 const LOCAIS_VISITA = [
     "Rio D'Ouro", "São Pedro", "Tinguá - Barrelão", "Tinguá - Serra Velha",
     "Tinguá - Brava/Macuco", "Tinguá - Colomi", "Tinguá - Boa Esperança",
@@ -29,19 +23,15 @@ id_vistoria: null
 let stream = null;
 let currentPhotoInputId = null;
 
-// ============================================================
 // 2. CONTROLE DE TELAS E NAVEGAÇÃO
-// ============================================================
-
 function showScreen(id) {
 ["screen-cadastro", "screen-select-roteiro", "screen-formulario", "screen-final"]
 .forEach(t => document.getElementById(t)?.classList.toggle("hidden", t !== id));
 window.scrollTo(0, 0);
 }
 
-// ============================================================
 // 3. BOOTSTRAP DO APLICATIVO
-// ============================================================
+
 // Função de suporte para recuperar metadados leves
 function carregarMetaDoLocalStorage() {
     const metaStr = localStorage.getItem("APP_META");
@@ -137,9 +127,26 @@ function validarEComecar() {
 // ============================================================
 function registrarResposta(idPergunta, valor, tipoRoteiro) {
     const roteiroAlvo = tipoRoteiro || APP_STATE.tipoRoteiro;
-    if (!roteiroAlvo && idPergunta !== null) return; 
+    
+    // 1. Tenta recuperar o ID de todas as fontes possíveis
+    const idFinal = APP_STATE.id_vistoria || localStorage.getItem("id_vistoria");
 
-    if (idPergunta !== null) {
+    // 2. BLOQUEIO DE SEGURANÇA: Se não tem ID, não tenta salvar no DB
+    if (!idFinal) {
+        console.warn("⚠️ Abortando salvamento no DB: id_vistoria ainda não foi gerado.");
+        // Apenas atualiza o estado local para não perder o que o usuário digitou
+        if (idPergunta !== null && roteiroAlvo) {
+            if (!APP_STATE.respostas[roteiroAlvo]) APP_STATE.respostas[roteiroAlvo] = {};
+            APP_STATE.respostas[roteiroAlvo][idPergunta] = valor;
+        }
+        return; 
+    }
+
+    // 3. Atualiza o Estado Global com o ID validado
+    APP_STATE.id_vistoria = idFinal;
+
+    // 4. Grava a resposta no objeto APP_STATE
+    if (idPergunta !== null && roteiroAlvo) {
         if (!APP_STATE.respostas[roteiroAlvo]) APP_STATE.respostas[roteiroAlvo] = {};
         
         if (roteiroAlvo === "pge") {
@@ -150,9 +157,7 @@ function registrarResposta(idPergunta, valor, tipoRoteiro) {
         }
     }
 
-    // Força a sincronia do ID oficial
-    const idFinal = APP_STATE.id_vistoria || localStorage.getItem("id_vistoria");
-    
+    // 5. Persiste Metadados no LocalStorage
     const metaData = {
         avaliador: APP_STATE.avaliador,
         local: APP_STATE.local,
@@ -161,15 +166,17 @@ function registrarResposta(idPergunta, valor, tipoRoteiro) {
         sublocal: APP_STATE.sublocal,
         tipoRoteiro: APP_STATE.tipoRoteiro
     };
-    
     localStorage.setItem("APP_META", JSON.stringify(metaData));
+    localStorage.setItem("id_vistoria", idFinal); // Redundância para garantir
 
+    // 6. Salva no IndexedDB via API
     if (window.DB_API?.saveVisita) {
-        // Enviamos o clone do estado para o IndexedDB
         window.DB_API.saveVisita({
             ...APP_STATE,
-            id_vistoria: idFinal
-        }).catch(err => console.error("Erro ao persistir:", err));
+            id_vistoria: idFinal // Garante que a chave primária esteja presente
+        }).catch(err => {
+            console.error("❌ Erro crítico no IndexedDB:", err);
+        });
     }
 }
 // ============================================================
@@ -1117,7 +1124,7 @@ async function confirmarNovaVistoria() {
         if(symbol) symbol.innerText = "⚠️";
     }
 }
-window.savePhotoToDB = async (fotoId, blob, idPergunta, base64) => {
+window.savePhotoToDB = async (fotoId, _blob, idPergunta, base64) => {
     const db = await DB_API.openDB();
     
     // 1. Recupera o ID (Garantindo que não seja nulo)
@@ -1236,4 +1243,5 @@ window.validarEComecar = validarEComecar;
 window.atualizarStatusTexto = atualizarStatusTexto;
 
 document.addEventListener("DOMContentLoaded", initApp);
+
 
