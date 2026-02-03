@@ -59,32 +59,39 @@ function carregarMetaDoLocalStorage() {
 async function initApp() {
     console.log("🚀 Iniciando App...");
     
-    // 1. Prioridade total para o ID que já existe (evita resetar no meio do campo)
-    APP_STATE.id_vistoria = localStorage.getItem("id_vistoria");
-
-    // 2. Carrega metadados (Avaliador, Local, etc)
+    // 1. Carrega o que estiver no LocalStorage (Metadados rápidos)
     carregarMetaDoLocalStorage();
 
-    // 3. Tenta recuperar progresso do IndexedDB se houver um ID ativo
-    if (APP_STATE.id_vistoria && window.DB_API?.loadVisita) {
+    // 2. Carrega o progresso pesado do IndexedDB
+    if (window.DB_API && window.DB_API.loadVisita) {
         try {
-            const dadosSalvos = await DB_API.loadVisita(APP_STATE.id_vistoria);
+            const dadosSalvos = await DB_API.loadVisita();
             if (dadosSalvos) {
+                // Sincroniza respostas
                 APP_STATE.respostas = dadosSalvos.respostas || APP_STATE.respostas;
-                // Garante que o estado reflita o ID do banco
-                APP_STATE.id_vistoria = dadosSalvos.id_vistoria;
+                
+                // UNIFICAÇÃO DE CHAVE: Garante que id_vistoria seja a oficial
+                APP_STATE.id_vistoria = dadosSalvos.id_vistoria || dadosSalvos.id_visita || localStorage.getItem("id_vistoria");
             }
         } catch (err) {
-            console.warn("Nenhum dado prévio encontrado para este ID.");
+            console.warn("Sem dados no IndexedDB, iniciando limpo.");
         }
     }
 
-    // 4. Configuração do Seletor de Locais (sem alterações aqui)
+    // 3. SE NÃO EXISTIR ID, CRIA AGORA (Evita o erro de Chave Nula no celular)
+    if (!APP_STATE.id_vistoria) {
+        APP_STATE.id_vistoria = `VIST_${Date.now()}`;
+        localStorage.setItem("id_vistoria", APP_STATE.id_vistoria);
+    }
+
+    // 4. Configuração do Seletor (Mantido seu código original)
     const selLocal = document.getElementById("local");
     if (selLocal) {
         selLocal.innerHTML = `<option disabled selected value="">Selecionar Local...</option>` +
             LOCAIS_VISITA.map(l => `<option value="${l}">${l}</option>`).join("");
+        
         if (APP_STATE.local) selLocal.value = APP_STATE.local;
+        
         selLocal.onchange = () => {
             APP_STATE.local = selLocal.value;
             registrarResposta(null, null); 
@@ -92,36 +99,35 @@ async function initApp() {
     }
 
     // 5. Direcionamento de Tela
-    if (APP_STATE.local && APP_STATE.avaliador && APP_STATE.id_vistoria) {
+    if (APP_STATE.local && APP_STATE.avaliador) {
         showScreen("screen-select-roteiro");
     } else {
         showScreen("screen-cadastro");
     }
 }
-
 function validarEComecar() {
     const elAval = document.getElementById("avaliador");
     const elLocal = document.getElementById("local");
     const elData = document.getElementById("data_visita");
+    const elColab = document.getElementById("colaborador");
 
     if (!elAval.value || !elLocal.value || !elData.value) {
         alert("Preencha Avaliador, Local e Data!");
         return;
     }
 
-    // Só geramos um NOVO id se não houver um atual ou se o local mudou drasticamente
-    if (!APP_STATE.id_vistoria) {
-        APP_STATE.id_vistoria = `VIST_${Date.now()}`;
-        localStorage.setItem("id_vistoria", APP_STATE.id_vistoria);
-    }
-
+    // Atualiza Estado Global
     APP_STATE.avaliador = elAval.value;
     APP_STATE.local = elLocal.value;
     APP_STATE.data = elData.value;
+    APP_STATE.colaborador = elColab ? elColab.value : "";
+    APP_STATE.id_vistoria = `VIST_${Date.now()}`; // Cria o ID único aqui
+    localStorage.setItem("id_vistoria", APP_STATE.id_vistoria);
     
-    registrarResposta(null, null); 
+    registrarResposta(null, null); // Salva os metadados iniciais
     showScreen("screen-select-roteiro");
 }
+
 /// ============================================================
 // 4. PERSISTÊNCIA DE RESPOSTAS (REVISADA)
 // ============================================================
