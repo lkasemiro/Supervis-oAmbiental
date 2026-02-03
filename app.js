@@ -772,19 +772,36 @@ async function baixarExcelConsolidado() {
                     resposta: String(respostaTexto)
                 });
 
-                if (fotosFiltradas.length > 0) {
-                    novaLinha.height = 100;
-                    for (const foto of fotosFiltradas) {
-                        const arrayBuffer = await foto.blob.arrayBuffer();
-                        const imageId = workbook.addImage({ buffer: arrayBuffer, extension: 'jpeg' });
-                        sheet.addImage(imageId, {
-                            tl: { col: 4, row: novaLinha.number - 1 },
-                            ext: { width: 120, height: 120 }
-                        });
-                    }
-                }
-            }
+               // Localize onde você itera sobre as fotos e substitua pelo código abaixo:
+if (fotosFiltradas.length > 0) {
+    novaLinha.height = 100;
+    for (const foto of fotosFiltradas) {
+        // Checa se é Blob ou Base64 para não quebrar
+        let buffer;
+        if (foto.blob && typeof foto.blob.arrayBuffer === 'function') {
+            buffer = await foto.blob.arrayBuffer();
+        } else if (foto.base64) {
+            // Se for base64 (o que corrigimos hoje), o ExcelJS aceita assim:
+            const imageId = workbook.addImage({
+                base64: foto.base64.split(',')[1],
+                extension: 'jpeg'
+            });
+            sheet.addImage(imageId, {
+                tl: { col: 4, row: novaLinha.number - 1 },
+                ext: { width: 120, height: 120 }
+            });
+            continue; // Pula para a próxima foto
         }
+
+        if (buffer) {
+            const imageId = workbook.addImage({ buffer: buffer, extension: 'jpeg' });
+            sheet.addImage(imageId, {
+                tl: { col: 4, row: novaLinha.number - 1 },
+                ext: { width: 120, height: 120 }
+            });
+        }
+    }
+}
 
         const buffer = await workbook.xlsx.writeBuffer();
         const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
