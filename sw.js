@@ -1,4 +1,4 @@
-const CACHE_NAME = 'cedae-vistorias-v18';
+const CACHE_NAME = 'cedae-vistorias-v19';
 
 // Lista de ativos para cache offline
 const ASSETS_TO_CACHE = [
@@ -15,7 +15,7 @@ const ASSETS_TO_CACHE = [
 ];
 // 1. Instalação: Salva arquivos essenciais
 self.addEventListener('install', (event) => {
-  console.log('[SW] Instalando v17...');
+  console.log('[SW] Instalando SW...');
   self.skipWaiting(); // Força a nova versão a assumir o controle imediatamente
   
   event.waitUntil(
