@@ -1,5 +1,5 @@
 const DB_NAME = "CEDAE_VistoriasDB";
-const DB_VERSION = 10; // Subimos a versão para aplicar os novos índices
+const DB_VERSION = 11; // Subimos a versão para aplicar os novos índices
 const STORE_RESPOSTAS = "vistorias";
 const STORE_FOTOS = "fotos";
 
