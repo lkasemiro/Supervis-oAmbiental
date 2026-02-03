@@ -736,6 +736,8 @@ async function handleExcelReativo() {
 async function baixarExcelConsolidado() {
     try {
         const workbook = new ExcelJS.Workbook();
+        
+        // Configuração das abas baseada nos roteiros carregados
         const configuracao = [
             { nome: "Geral", id: "geral", fonte: window.ROTEIRO_GERAL },
             { nome: "PGE", id: "pge", fonte: window.ROTEIRO_PGE },
@@ -744,6 +746,7 @@ async function baixarExcelConsolidado() {
 
         for (const config of configuracao) {
             if (!config.fonte) continue;
+
             const sheet = workbook.addWorksheet(config.nome);
             sheet.columns = [
                 { header: 'SEÇÃO', key: 'secao', width: 20 },
@@ -756,13 +759,17 @@ async function baixarExcelConsolidado() {
             const respostasDoTipo = APP_STATE.respostas[config.id] || {};
 
             for (const p of config.fonte) {
+                // Lógica de ID composta para o roteiro PGE
                 let respostaTexto = (config.id === "pge") 
                     ? respostasDoTipo[`${p.id}_${p.Sublocal}`] || "" 
                     : respostasDoTipo[p.id] || "";
                 
-                // Busca fotos usando a função unificada do DB_API
-                const fotosFiltradas = await DB_API.getFotosPergunta(p.id);
+                // Busca fotos vinculadas a esta pergunta específica no banco
+                // Nota: Usamos o ID da vistoria atual para filtrar
+                const todasAsFotos = await DB_API.getAllFotosVistoria(APP_STATE.id_vistoria);
+                const fotosFiltradas = todasAsFotos.filter(f => f.pergunta_id === p.id);
 
+                // Se não houver texto nem foto, pula a linha para o Excel não ficar vazio
                 if (!respostaTexto && fotosFiltradas.length === 0) continue;
 
                 const novaLinha = sheet.addRow({
@@ -772,48 +779,62 @@ async function baixarExcelConsolidado() {
                     resposta: String(respostaTexto)
                 });
 
-               // Localize onde você itera sobre as fotos e substitua pelo código abaixo:
-if (fotosFiltradas.length > 0) {
-    novaLinha.height = 100;
-    for (const foto of fotosFiltradas) {
-        // Checa se é Blob ou Base64 para não quebrar
-        let buffer;
-        if (foto.blob && typeof foto.blob.arrayBuffer === 'function') {
-            buffer = await foto.blob.arrayBuffer();
-        } else if (foto.base64) {
-            // Se for base64 (o que corrigimos hoje), o ExcelJS aceita assim:
-            const imageId = workbook.addImage({
-                base64: foto.base64.split(',')[1],
-                extension: 'jpeg'
-            });
-            sheet.addImage(imageId, {
-                tl: { col: 4, row: novaLinha.number - 1 },
-                ext: { width: 120, height: 120 }
-            });
-            continue; // Pula para a próxima foto
+                // Inserção de Imagens
+                if (fotosFiltradas.length > 0) {
+                    novaLinha.height = 100; // Aumenta a altura da linha para caber a foto
+                    
+                    for (const foto of fotosFiltradas) {
+                        try {
+                            let imageId;
+                            
+                            // Caso 1: Formato Base64 (Abordagem atual/rápida)
+                            if (foto.base64) {
+                                imageId = workbook.addImage({
+                                    base64: foto.base64.split(',')[1],
+                                    extension: 'png'
+                                });
+                            } 
+                            // Caso 2: Formato Blob (Backup/Segurança)
+                            else if (foto.blob) {
+                                const arrayBuffer = await foto.blob.arrayBuffer();
+                                imageId = workbook.addImage({ 
+                                    buffer: arrayBuffer, 
+                                    extension: 'jpeg' 
+                                });
+                            }
+
+                            if (imageId) {
+                                sheet.addImage(imageId, {
+                                    tl: { col: 4, row: novaLinha.number - 1 },
+                                    ext: { width: 120, height: 120 }
+                                });
+                            }
+                        } catch (imgErr) {
+                            console.warn("Falha ao inserir uma imagem específica:", imgErr);
+                        }
+                    }
+                }
+            }
         }
 
-        if (buffer) {
-            const imageId = workbook.addImage({ buffer: buffer, extension: 'jpeg' });
-            sheet.addImage(imageId, {
-                tl: { col: 4, row: novaLinha.number - 1 },
-                ext: { width: 120, height: 120 }
-            });
-        }
-    }
-}
-
+        // Geração do arquivo e download
         const buffer = await workbook.xlsx.writeBuffer();
         const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
         const url = window.URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url;
         a.download = `Relatorio_${APP_STATE.local || 'Vistoria'}_${Date.now()}.xlsx`;
+        document.body.appendChild(a); // Necessário para alguns navegadores mobile
         a.click();
+        document.body.removeChild(a);
         
-        marcarComoConcluidoUI('excel');
+        if (typeof marcarComoConcluidoUI === 'function') {
+            marcarComoConcluidoUI('excel');
+        }
+
     } catch (err) {
-        throw err;
+        console.error("Erro fatal na geração do Excel:", err);
+        alert("Erro ao gerar Excel: " + err.message);
     }
 }
 
