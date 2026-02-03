@@ -128,33 +128,18 @@ function validarEComecar() {
     showScreen("screen-select-roteiro");
 }
 
-/// ============================================================
 // 4. PERSISTÊNCIA DE RESPOSTAS (REVISADA)
-// ============================================================
 function registrarResposta(idPergunta, valor, tipoRoteiro) {
+    // 1. Identifica o roteiro ativo
     const roteiroAlvo = tipoRoteiro || APP_STATE.tipoRoteiro;
-    
-    // 1. Tenta recuperar o ID de todas as fontes possíveis
-    const idFinal = APP_STATE.id_vistoria || localStorage.getItem("id_vistoria");
+    if (!roteiroAlvo) return; // Segurança contra chamadas prematuras
 
-    // 2. BLOQUEIO DE SEGURANÇA: Se não tem ID, não tenta salvar no DB
-    if (!idFinal) {
-        console.warn("⚠️ Abortando salvamento no DB: id_vistoria ainda não foi gerado.");
-        // Apenas atualiza o estado local para não perder o que o usuário digitou
-        if (idPergunta !== null && roteiroAlvo) {
-            if (!APP_STATE.respostas[roteiroAlvo]) APP_STATE.respostas[roteiroAlvo] = {};
-            APP_STATE.respostas[roteiroAlvo][idPergunta] = valor;
-        }
-        return; 
+    if (!APP_STATE.respostas[roteiroAlvo]) {
+        APP_STATE.respostas[roteiroAlvo] = {};
     }
 
-    // 3. Atualiza o Estado Global com o ID validado
-    APP_STATE.id_vistoria = idFinal;
-
-    // 4. Grava a resposta no objeto APP_STATE
-    if (idPergunta !== null && roteiroAlvo) {
-        if (!APP_STATE.respostas[roteiroAlvo]) APP_STATE.respostas[roteiroAlvo] = {};
-        
+    // 2. Registra o valor (se houver idPergunta)
+    if (idPergunta !== null) {
         if (roteiroAlvo === "pge") {
             const chaveComposta = `${idPergunta}_${APP_STATE.sublocal || 'Geral'}`;
             APP_STATE.respostas.pge[chaveComposta] = valor;
@@ -163,32 +148,49 @@ function registrarResposta(idPergunta, valor, tipoRoteiro) {
         }
     }
 
-    // 5. Persiste Metadados no LocalStorage
+    // 3. SEGURANÇA DE CHAVE PRIMÁRIA (O Pulo do Gato)
+    // Forçamos o APP_STATE a ter a chave exata que o IndexedDB v7 espera: id_vistoria
+    const idFinal = APP_STATE.id_vistoria || APP_STATE.id_visita || localStorage.getItem("id_vistoria");
+    
+    // 4. Salva Metadados Leves (LocalStorage)
     const metaData = {
         avaliador: APP_STATE.avaliador,
         local: APP_STATE.local,
-        id_vistoria: idFinal,
+        id_vistoria: idFinal, // Padronizado
         data: APP_STATE.data,
         sublocal: APP_STATE.sublocal,
         tipoRoteiro: APP_STATE.tipoRoteiro
     };
-    localStorage.setItem("APP_META", JSON.stringify(metaData));
-    localStorage.setItem("id_vistoria", idFinal); // Redundância para garantir
+    
+    try {
+        localStorage.setItem("APP_META", JSON.stringify(metaData));
+        localStorage.setItem("id_vistoria", idFinal); // redundância de segurança
+    } catch (e) {
+        console.warn("LocalStorage cheio ou bloqueado.");
+    }
 
-    // 6. Salva no IndexedDB via API
-    if (window.DB_API?.saveVisita) {
-        window.DB_API.saveVisita({
+    // 5. PERSISTÊNCIA NO INDEXEDDB
+    // Criamos o objeto final garantindo que id_vistoria exista
+    if (window.DB_API && window.DB_API.saveVisita) {
+        const dadosParaSalvar = {
             ...APP_STATE,
-            id_vistoria: idFinal // Garante que a chave primária esteja presente
-        }).catch(err => {
-            console.error("❌ Erro crítico no IndexedDB:", err);
+            id_vistoria: idFinal // Injeção obrigatória para o keyPath
+        };
+        
+        // Removemos id_visita (opcional) para evitar confusão no futuro
+        delete dadosParaSalvar.id_visita;
+
+        window.DB_API.saveVisita(dadosParaSalvar).catch(err => {
+            console.error("Erro ao salvar no IndexedDB:", err);
+            // No celular, mostramos o erro real se falhar
+            if(navigator.userAgent.includes("Mobi")) {
+                console.log("Falha no put: Verifique se o keyPath 'id_vistoria' é nulo.");
+            }
         });
     }
 }
-// ============================================================
-// 6. SELEÇÃO DE ROTEIRO (FLUXO PRINCIPAL)
-// ============================================================
 
+// 6. SELEÇÃO DE ROTEIRO (FLUXO PRINCIPAL)
 async function selectRoteiro(tipo) {
 
     const mapeamento = {
@@ -413,8 +415,8 @@ function renderFormulario(secaoFiltrada = null) {
         }
     });
 }
-// ============================================================
-// 10. INPUTS
+
+// 10. INPUT
 // ============================================================
 function renderInput(p, container, valorSalvo) {
     const tipoInput = p.TipoInput; 
