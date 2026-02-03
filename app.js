@@ -710,11 +710,22 @@ async function handleExcelReativo() {
     }
 }
 
+async function handleExcelReativo() {
+    UI_setLoading('excel', true, { loadingText: "A GERAR FICHEIRO..." });
+    try {
+        await baixarExcelConsolidado();
+        // O marcarComoConcluidoUI já é chamado dentro da baixarExcelConsolidado no sucesso
+    } catch (error) {
+        console.error("Erro no Excel:", error);
+        alert("Erro ao gerar o Excel.");
+    } finally {
+        UI_setLoading('excel', false, { defaultText: "BAIXAR NOVAMENTE 📊" });
+    }
+}
+
 async function baixarExcelConsolidado() {
     try {
         const workbook = new ExcelJS.Workbook();
-        
-        // Configuração das abas baseada nos roteiros carregados
         const configuracao = [
             { nome: "Geral", id: "geral", fonte: window.ROTEIRO_GERAL },
             { nome: "PGE", id: "pge", fonte: window.ROTEIRO_PGE },
@@ -723,7 +734,6 @@ async function baixarExcelConsolidado() {
 
         for (const config of configuracao) {
             if (!config.fonte) continue;
-
             const sheet = workbook.addWorksheet(config.nome);
             sheet.columns = [
                 { header: 'SEÇÃO', key: 'secao', width: 20 },
@@ -736,17 +746,13 @@ async function baixarExcelConsolidado() {
             const respostasDoTipo = APP_STATE.respostas[config.id] || {};
 
             for (const p of config.fonte) {
-                // Lógica de ID composta para o roteiro PGE
                 let respostaTexto = (config.id === "pge") 
                     ? respostasDoTipo[`${p.id}_${p.Sublocal}`] || "" 
                     : respostasDoTipo[p.id] || "";
                 
-                // Busca fotos vinculadas a esta pergunta específica no banco
-                // Nota: Usamos o ID da vistoria atual para filtrar
-                const todasAsFotos = await DB_API.getAllFotosVistoria(APP_STATE.id_vistoria);
-                const fotosFiltradas = todasAsFotos.filter(f => f.pergunta_id === p.id);
+                // Busca fotos usando a função unificada do DB_API
+                const fotosFiltradas = await DB_API.getFotosPergunta(p.id);
 
-                // Se não houver texto nem foto, pula a linha para o Excel não ficar vazio
                 if (!respostaTexto && fotosFiltradas.length === 0) continue;
 
                 const novaLinha = sheet.addRow({
@@ -756,68 +762,64 @@ async function baixarExcelConsolidado() {
                     resposta: String(respostaTexto)
                 });
 
-                // Inserção de Imagens
                 if (fotosFiltradas.length > 0) {
-                    novaLinha.height = 100; // Aumenta a altura da linha para caber a foto
-                    
-                    for (const foto of fotosFiltradas) {
-                        try {
-                            let imageId;
-                            
-                            // Caso 1: Formato Base64 (Abordagem atual/rápida)
-                            if (foto.base64) {
-                                imageId = workbook.addImage({
-                                    base64: foto.base64.split(',')[1],
-                                    extension: 'png'
-                                });
-                            } 
-                            // Caso 2: Formato Blob (Backup/Segurança)
-                            else if (foto.blob) {
-                                const arrayBuffer = await foto.blob.arrayBuffer();
-                                imageId = workbook.addImage({ 
-                                    buffer: arrayBuffer, 
-                                    extension: 'jpeg' 
-                                });
-                            }
+    novaLinha.height = 110; // Aumenta a linha para a foto caber
+    
+    for (const [index, foto] of fotosFiltradas.entries()) {
+        try {
+            // Verifica se temos o base64 (que é o que estamos salvando no savePhotoToDB)
+            if (foto.base64) {
+                // Remove o cabeçalho "data:image/png;base64," se existir
+                const base64Limpo = foto.base64.includes(',') ? foto.base64.split(',')[1] : foto.base64;
+                
+                const imageId = workbook.addImage({
+                    base64: base64Limpo,
+                    extension: 'png' // ou 'jpeg', dependendo da sua câmera
+                });
 
-                            if (imageId) {
-                                sheet.addImage(imageId, {
-                                    tl: { col: 4, row: novaLinha.number - 1 },
-                                    ext: { width: 120, height: 120 }
-                                });
-                            }
-                        } catch (imgErr) {
-                            console.warn("Falha ao inserir uma imagem específica:", imgErr);
-                        }
-                    }
-                }
+                sheet.addImage(imageId, {
+                    // col: 4 é a coluna E. 
+                    // Se houver mais de uma foto, elas serão sobrepostas. 
+                    // Dica: use { col: 4 + index } se quiser uma foto por coluna.
+                    tl: { col: 4, row: novaLinha.number - 1 },
+                    ext: { width: 140, height: 140 },
+                    editAs: 'oneCell'
+                });
+            } else if (foto.blob) {
+                // Caso você mude para Blob no futuro, este fallback continua funcionando
+                const arrayBuffer = await foto.blob.arrayBuffer();
+                const imageId = workbook.addImage({ 
+                    buffer: arrayBuffer, 
+                    extension: 'jpeg' 
+                });
+                sheet.addImage(imageId, {
+                    tl: { col: 4, row: novaLinha.number - 1 },
+                    ext: { width: 140, height: 140 }
+                });
+            }
+        } catch (errFoto) {
+            console.warn("Erro ao inserir imagem no Excel:", errFoto);
+        }
+    }
+}
             }
         }
 
-        // Geração do arquivo e download
         const buffer = await workbook.xlsx.writeBuffer();
         const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
         const url = window.URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url;
         a.download = `Relatorio_${APP_STATE.local || 'Vistoria'}_${Date.now()}.xlsx`;
-        document.body.appendChild(a); // Necessário para alguns navegadores mobile
         a.click();
-        document.body.removeChild(a);
         
-        if (typeof marcarComoConcluidoUI === 'function') {
-            marcarComoConcluidoUI('excel');
-        }
-
+        marcarComoConcluidoUI('excel');
     } catch (err) {
-        console.error("Erro fatal na geração do Excel:", err);
-        alert("Erro ao gerar Excel: " + err.message);
+        throw err;
     }
 }
 
-// ============================================================
 // 15. SINCRONIZAÇÃO UNIFICADA (R/PLUMBER)
-// ============================================================
 async function handleSincronizacao() {
     if (!navigator.onLine) {
         alert("Sem conexão! Dados salvos localmente.");
@@ -918,9 +920,8 @@ function marcarComoConcluidoUI(metodo) {
         }
     }
 }
-// ============================================================
+
 // SINCRONIZAÇÃO MANUAL (BOTÃO ENVIAR)
-// ============================================================
 async function sincronizarComBanco() {
     // 1. Verifica conexão antes de começar
     if (!navigator.onLine) {
@@ -1169,17 +1170,22 @@ window.savePhotoToDB = async (fotoId, _blob, idPergunta, base64) => {
 };
 DB_API.getFotosPergunta = async (idPergunta) => {
     const db = await DB_API.openDB();
+    const idAtual = APP_STATE.id_vistoria || localStorage.getItem("id_vistoria");
+
     return new Promise((resolve, reject) => {
         const tx = db.transaction(['fotos'], 'readonly');
         const store = tx.objectStore('fotos');
-        const req = store.getAll();
+        
+        // 🚀 O SEGREDO: Usar o índice "id_vistoria" que você criou na versão 10
+        const index = store.index("id_vistoria");
+        const req = index.getAll(idAtual);
 
         req.onsuccess = () => {
-            // Filtra fotos que pertencem à vistoria atual E à pergunta específica
-            const fotosFiltradas = req.result.filter(f => 
-                f.id_visita === APP_STATE.id_visita && 
-                f.pergunta_id === idPergunta
-            );
+            const todasDaVistoria = req.result || [];
+            // Agora filtramos apenas pela pergunta, pois o ID da vistoria o índice já resolveu
+            const fotosFiltradas = todasDaVistoria.filter(f => f.pergunta_id === idPergunta);
+            
+            console.log(`📸 Fotos encontradas para ${idPergunta}:`, fotosFiltradas.length);
             resolve(fotosFiltradas);
         };
         req.onerror = (e) => reject(e);
@@ -1244,6 +1250,8 @@ window.validarEComecar = validarEComecar;
 window.atualizarStatusTexto = atualizarStatusTexto;
 
 document.addEventListener("DOMContentLoaded", initApp);
+
+
 
 
 
