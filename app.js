@@ -1112,12 +1112,11 @@ async function confirmarNovaVistoria() {
 window.savePhotoToDB = async (fotoId, blob, idPergunta, base64) => {
     const db = await DB_API.openDB();
     
-    // Tenta recuperar o ID de todas as fontes possíveis para não dar erro
-    const idFinal = APP_STATE.id_vistoria || APP_STATE.id_visita || localStorage.getItem("id_vistoria") || localStorage.getItem("id_visita");
+    // 1. Recupera o ID (Garantindo que não seja nulo)
+    const idFinal = APP_STATE.id_vistoria || APP_STATE.id_visita || localStorage.getItem("id_vistoria");
 
     if (!idFinal) {
-        console.error("ERRO CRÍTICO: Tentativa de salvar foto sem ID de vistoria ativa!");
-        alert("Erro: ID da vistoria não encontrado. Por favor, reinicie o cadastro.");
+        console.error("ERRO: Sem ID de vistoria!");
         return;
     }
 
@@ -1125,17 +1124,28 @@ window.savePhotoToDB = async (fotoId, blob, idPergunta, base64) => {
         const tx = db.transaction(['fotos'], 'readwrite');
         const store = tx.objectStore('fotos');
 
+        // 2. Salva no IndexedDB (Para o R/Sincronização)
         store.put({
             foto_id: fotoId,
-            id_visita: idFinal, // Usa o ID recuperado com sucesso
+            id_vistoria: idFinal, 
             pergunta_id: idPergunta,
-            sublocal: APP_STATE.sublocal || "Geral", 
             base64, 
             timestamp: Date.now()
         });
 
         tx.oncomplete = () => {
-            console.log(`✅ Foto ${fotoId} salva com ID: ${idFinal}`);
+            // 🚀 O PULO DO GATO: Atualiza o estado para a miniatura e o Excel
+            if (!APP_STATE.respostas.fotos) APP_STATE.respostas.fotos = {};
+            APP_STATE.respostas.fotos[idPergunta] = base64; 
+
+            // Avisa o console e renderiza a miniatura
+            console.log(`✅ Foto exibida e salva: ${fotoId}`);
+            
+            // Chama a função que desenha a miniatura na tela (se ela existir no seu app.js)
+            if (typeof renderizarMiniatura === "function") {
+                renderizarMiniatura(idPergunta, base64);
+            }
+            
             resolve();
         };
         tx.onerror = (e) => reject(e);
