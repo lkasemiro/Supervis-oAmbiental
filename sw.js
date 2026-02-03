@@ -1,19 +1,18 @@
-const CACHE_NAME = 'cedae-vistorias-v17';
+const CACHE_NAME = 'cedae-vistorias-v18';
 
 // Lista de ativos para cache offline
 const ASSETS_TO_CACHE = [
   './',
   './index.html',
   './app.js',
-  './icon.png,
   './style.css',
   './indexedDB.js',
   './roteiros.js',
   './manifest.json',
   './lib/tailwind.js',
-  './lib/exceljs.min.js'
+  './lib/exceljs.min.js',
+  './icon.png'
 ];
-
 // 1. Instalação: Salva arquivos essenciais
 self.addEventListener('install', (event) => {
   console.log('[SW] Instalando v17...');
