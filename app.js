@@ -1124,7 +1124,7 @@ window.savePhotoToDB = async (fotoId, blob, idPergunta, base64) => {
 
         store.put({
             foto_id: fotoId,
-            id_visita: APP_STATE.id_visita, 
+            id_vistoria: idFinal, 
             pergunta_id: idPergunta, // Ex: "pge_01" ou "Vazamento Detectado"
             sublocal: APP_STATE.sublocal || "Geral", 
             base64, // O R vai usar este campo para salvar o arquivo físico .jpg
@@ -1160,7 +1160,11 @@ DB_API.getFotosPergunta = async (idPergunta) => {
 // ============================================================
 // TRATAMENTO DE ERROS E STATUS
 // ============================================================
-
+// Monitora a volta da internet para disparar a sincronização silenciosa
+window.addEventListener('online', () => {
+    console.log("Sinal recuperado! Iniciando sincronização...");
+    sincronizarVisitasPendentes(); 
+});
 // 1. Função segura para atualizar status de texto
 function atualizarStatusTexto(msg) {
     const el = document.getElementById('status-sinc');
