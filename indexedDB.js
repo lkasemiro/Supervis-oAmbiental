@@ -78,6 +78,53 @@ const DB_API = {
             req.onsuccess = () => resolve(req.result || null);
             req.onerror = () => resolve(null);
         });
+    },
+    // 1. BUSCA TUDO PARA SINCRONIZAR
+    async listarTodasVistorias() {
+        const db = await this.openDB();
+        const tx = db.transaction([STORE_RESPOSTAS], 'readonly');
+        const store = tx.objectStore(STORE_RESPOSTAS);
+        const req = store.getAll();
+
+        return new Promise((resolve) => {
+            req.onsuccess = async () => {
+                const vistorias = req.result || [];
+                // Para cada vistoria, buscamos suas fotos antes de retornar
+                const vistoriasCompletas = await Promise.all(vistorias.map(async (v) => {
+                    const fotos = await this.getAllFotosVistoria(v.id_vistoria);
+                    return { ...v, fotos_anexas: fotos }; // Pacote completo para o R
+                }));
+                resolve(vistoriasCompletas);
+            };
+            req.onerror = () => resolve([]);
+        });
+    },
+
+    // 2. DELETA APÓS SUCESSO NO R
+    async deletarVistoriaCompleta(idVistoria) {
+        const db = await this.openDB();
+        const tx = db.transaction([STORE_RESPOSTAS, STORE_FOTOS], 'readwrite');
+        
+        // Deleta os dados de texto
+        tx.objectStore(STORE_RESPOSTAS).delete(idVistoria);
+        
+        // Deleta todas as fotos vinculadas (usando o índice)
+        const fotoStore = tx.objectStore(STORE_FOTOS);
+        const index = fotoStore.index("id_vistoria");
+        const cursorReq = index.openKeyCursor(IDBKeyRange.only(idVistoria));
+        
+        cursorReq.onsuccess = () => {
+            const cursor = cursorReq.result;
+            if (cursor) {
+                fotoStore.delete(cursor.primaryKey);
+                cursor.continue();
+            }
+        };
+
+        return new Promise((resolve) => {
+            tx.oncomplete = () => resolve(true);
+            tx.onerror = () => resolve(false);
+        });
     }
 };
 
