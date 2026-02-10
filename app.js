@@ -928,6 +928,7 @@ function marcarComoConcluidoUI(metodo) {
 
 // SINCRONIZAÇÃO MANUAL (BOTÃO ENVIAR)
 async function sincronizarComBanco() {
+    // 1. Verificação de Conexão
     if (!navigator.onLine) {
         alert("Sem conexão à internet. Os dados permanecem seguros no seu aparelho.");
         return;
@@ -937,11 +938,16 @@ async function sincronizarComBanco() {
 
     try {
         const db = await DB_API.openDB();
-        // 1. Buscamos o estado atual direto do banco para evitar perda de dados em memória
+        
+        // 2. Recuperação dos Dados Locais
         const idAtual = APP_STATE.id_vistoria || localStorage.getItem("id_vistoria");
         const tx = db.transaction("vistorias", "readonly");
-        const vistoriaLocal = await new Promise(res => {
-            tx.objectStore("vistorias").get(String(idAtual)).onsuccess = (e) => res(e.target.result);
+        const store = tx.objectStore("vistorias");
+        
+        const vistoriaLocal = await new Promise((resolve, reject) => {
+            const request = store.get(String(idAtual));
+            request.onsuccess = () => resolve(request.result);
+            request.onerror = () => reject("Erro ao acessar banco local.");
         });
 
         if (!vistoriaLocal || vistoriaLocal.sincronizado) {
@@ -950,10 +956,10 @@ async function sincronizarComBanco() {
             return;
         }
 
-        // 2. Coleta de Fotos de forma assíncrona
+        // 3. Coleta de Fotos
         const fotos = await DB_API.getAllFotosVistoria(vistoriaLocal.id_vistoria);
         
-        // 3. Montagem do Core Payload (Padrão SQL CEDAE)
+        // 4. Montagem do Payload (Alinhado com o Core do R)
         const payload = {
             metadata: {
                 id_vistoria: String(vistoriaLocal.id_vistoria),
@@ -961,10 +967,9 @@ async function sincronizarComBanco() {
                 versao_app: "2.0.0"
             },
             core: {
-                tecnico: String(vistoriaLocal.tecnico || vistoriaLocal.avaliador || "Não Informado"),
-                local_id: String(vistoriaLocal.local || "Não Informado"),
-                atividade: String(vistoriaLocal.atividade || "Supervisão Ambiental"),
-                roteiro_tipo: String(vistoriaLocal.tipoRoteiro),
+                tecnico: String(vistoriaLocal.tecnico || vistoriaLocal.avaliador || "Admin"),
+                local_id: String(vistoriaLocal.local || "1"),
+                atividade: "supervisao", // Nome que seu R usa para buscar o ID
                 data_execucao: vistoriaLocal.data || new Date().toISOString()
             },
             dados: {
@@ -977,38 +982,55 @@ async function sincronizarComBanco() {
             }
         };
 
-        // 4. Envio com Timeout e Retry Manual
-        const response = await fetch('https://strapless-christi-unspread.ngrok-free.dev/vistorias/sincronizar', {
+        // 5. ENVIO PARA A API (Atenção à URL do ngrok)
+        // Lembre-se: Se reiniciar o ngrok, essa URL muda!
+        const URL_API = 'https://strapless-christi-unspread.ngrok-free.dev/vistorias/sincronizar';
+
+        const response = await fetch(URL_API, {
             method: 'POST',
+            mode: 'cors', // Necessário para requisições cross-domain
             headers: { 
                 'Content-Type': 'application/json',
-                'ngrok-skip-browser-warning': 'true' 
+                'ngrok-skip-browser-warning': 'true' // Pula o aviso do ngrok que trava o fetch
             },
             body: JSON.stringify(payload)
         });
 
+        // 6. Processamento da Resposta
         const resultado = await response.json();
 
         if (response.ok && (resultado.status === "sucesso" || resultado.code === 201)) {
-            // 5. Marcação de Sucesso no IndexedDB
+            
+            // 7. Atualização de Status no IndexedDB
             vistoriaLocal.sincronizado = true;
             vistoriaLocal.data_sincronismo = new Date().toISOString();
             
             const txUpdate = db.transaction("vistorias", "readwrite");
-            await txUpdate.objectStore("vistorias").put(vistoriaLocal);
+            await new Promise((resolve) => {
+                const reqUpdate = txUpdate.objectStore("vistorias").put(vistoriaLocal);
+                reqUpdate.onsuccess = () => resolve();
+            });
             
-            marcarComoConcluidoUI('sync');
+            // 8. Feedback Visual de Sucesso
+            if (typeof marcarComoConcluidoUI === 'function') marcarComoConcluidoUI('sync');
             UI_setLoading('sync', false, { defaultText: "ENVIADO COM SUCESSO ✓" });
             
-            // Notifica o sistema_dma no console
-            console.log(`🚀 Core DMA Atualizado: ${vistoriaLocal.id_vistoria}`);
+            console.log(`🚀 Sincronização Concluída: ${vistoriaLocal.id_vistoria}`);
+            alert("Vistoria enviada com sucesso para o DMA!");
+            
         } else {
-            throw new Error(resultado.mensagem || "O servidor recusou os dados.");
+            throw new Error(resultado.message || resultado.mensagem || "Erro desconhecido no servidor.");
         }
 
     } catch (error) {
-        console.error("Erro Crítico Sinc:", error);
-        alert("Falha na Sincronização: " + error.message);
+        console.error("Erro Crítico na Sincronização:", error);
+        
+        // Se o erro for 'Failed to fetch', provavelmente é o Plumber/ngrok desligado
+        const msgErro = error.message === 'Failed to fetch' 
+            ? "Não foi possível conectar ao servidor R. Verifique se o Plumber e o ngrok estão ativos." 
+            : error.message;
+
+        alert("Falha na Sincronização: " + msgErro);
         UI_setLoading('sync', false, { defaultText: "TENTAR NOVAMENTE" });
     }
 }
