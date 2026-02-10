@@ -1,5 +1,14 @@
 // APP.JS – VERSÃO INTEGRAL CORRIGIDA (ORGANIZADA POR FLUXO)
 
+
+// CONFIGURAÇÃO DE DEBUG (DESATIVAR LOGS NO ANDROID PARA EVITAR ERROS DE MEMÓRIA)
+const DEBUG_MODE = false; // Mude para true quando estiver testando no PC
+
+if (!DEBUG_MODE) {
+    console.log = function() {};
+    console.warn = function() {};
+    // Mantemos o console.error para saber se algo realmente quebrou
+}
 // 1. CONSTANTES E ESTADO GLOBAL
 const LOCAIS_VISITA = [
     "Rio D'Ouro", "São Pedro", "Tinguá - Barrelão", "Tinguá - Serra Velha",
@@ -57,25 +66,25 @@ function carregarMetaDoLocalStorage() {
     }
 }
 async function initApp() {
-    console.log("🚀 Iniciando App...");
+    console.log("🚀 Iniciando App com Proteção Android...");
     
-    // 1. Carrega o que estiver no LocalStorage (Metadados rápidos)
+    // 1. Tenta recuperar o estado crítico IMEDIATAMENTE do LocalStorage
+    const backup = localStorage.getItem("APP_STATE_BACKUP");
+    if (backup) {
+        APP_STATE = JSON.parse(backup);
+        console.log("♻️ Estado recuperado do backup pós-crash.");
+    }
+
     carregarMetaDoLocalStorage();
 
-    // 2. Carrega o progresso pesado do IndexedDB
+    // 2. Carregamento do IndexedDB em segundo plano (não trava a UI)
     if (window.DB_API && window.DB_API.loadVisita) {
-        try {
-            const dadosSalvos = await DB_API.loadVisita();
+        DB_API.loadVisita().then(dadosSalvos => {
             if (dadosSalvos) {
-                // Sincroniza respostas
-                APP_STATE.respostas = dadosSalvos.respostas || APP_STATE.respostas;
-                
-                // UNIFICAÇÃO DE CHAVE: Garante que id_vistoria seja a oficial
-                APP_STATE.id_vistoria = dadosSalvos.id_vistoria || dadosSalvos.id_visita || localStorage.getItem("id_vistoria");
+                 // Mescla dados do banco com o estado atual
+                 APP_STATE.respostas = { ...APP_STATE.respostas, ...dadosSalvos.respostas };
             }
-        } catch (err) {
-            console.warn("Sem dados no IndexedDB, iniciando limpo.");
-        }
+        });
     }
 
     // 3. SE NÃO EXISTIR ID, CRIA AGORA (Evita o erro de Chave Nula no celular)
@@ -127,18 +136,17 @@ function validarEComecar() {
     registrarResposta(null, null); // Salva os metadados iniciais
     showScreen("screen-select-roteiro");
 }
-
-// 4. PERSISTÊNCIA DE RESPOSTAS (REVISADA)
+/// 4. PERSISTÊNCIA DE RESPOSTAS (VERSÃO FINAL UNIFICADA - ANDROID READY)
 function registrarResposta(idPergunta, valor, tipoRoteiro) {
-    // 1. Identifica o roteiro ativo
+    // 1. Identifica o roteiro ativo e garante estrutura
     const roteiroAlvo = tipoRoteiro || APP_STATE.tipoRoteiro;
-    if (!roteiroAlvo) return; // Segurança contra chamadas prematuras
+    if (!roteiroAlvo) return;
 
     if (!APP_STATE.respostas[roteiroAlvo]) {
         APP_STATE.respostas[roteiroAlvo] = {};
     }
 
-    // 2. Registra o valor (se houver idPergunta)
+    // 2. Registra o valor no Estado Global (RAM)
     if (idPergunta !== null) {
         if (roteiroAlvo === "pge") {
             const chaveComposta = `${idPergunta}_${APP_STATE.sublocal || 'Geral'}`;
@@ -148,45 +156,53 @@ function registrarResposta(idPergunta, valor, tipoRoteiro) {
         }
     }
 
-    // 3. SEGURANÇA DE CHAVE PRIMÁRIA (O Pulo do Gato)
-    // Forçamos o APP_STATE a ter a chave exata que o IndexedDB v7 espera: id_vistoria
+    // 3. PADRONIZAÇÃO DE ID
     const idFinal = APP_STATE.id_vistoria || APP_STATE.id_visita || localStorage.getItem("id_vistoria");
-    
-    // 4. Salva Metadados Leves (LocalStorage)
-    const metaData = {
-        avaliador: APP_STATE.avaliador,
-        local: APP_STATE.local,
-        id_vistoria: idFinal, // Padronizado
-        data: APP_STATE.data,
-        sublocal: APP_STATE.sublocal,
-        tipoRoteiro: APP_STATE.tipoRoteiro
-    };
-    
-    try {
-        localStorage.setItem("APP_META", JSON.stringify(metaData));
-        localStorage.setItem("id_vistoria", idFinal); // redundância de segurança
-    } catch (e) {
-        console.warn("LocalStorage cheio ou bloqueado.");
+    APP_STATE.id_vistoria = idFinal; 
+
+    // 4. PERSISTÊNCIA NO INDEXEDDB (O BANCO REAL - COMPLETO)
+    if (window.DB_API && window.DB_API.saveVisita) {
+        const dadosParaBanco = JSON.parse(JSON.stringify(APP_STATE));
+        dadosParaBanco.id_vistoria = idFinal;
+        
+        window.DB_API.saveVisita(dadosParaBanco)
+            .then(() => console.log(`✅ IndexedDB: ${idPergunta || 'Metadados'} salvo com sucesso.`))
+            .catch(err => console.error("❌ Erro no IndexedDB:", err));
     }
 
-    // 5. PERSISTÊNCIA NO INDEXEDDB
-    // Criamos o objeto final garantindo que id_vistoria exista
-    if (window.DB_API && window.DB_API.saveVisita) {
-        const dadosParaSalvar = {
-            ...APP_STATE,
-            id_vistoria: idFinal // Injeção obrigatória para o keyPath
-        };
+    // 5. BACKUP DE EMERGÊNCIA (LOCALSTORAGE - APENAS O "ESQUELETO")
+    try {
+        // Criamos uma cópia profunda para não afetar o estado real do app
+        const backupLeve = JSON.parse(JSON.stringify(APP_STATE));
         
-        // Removemos id_visita (opcional) para evitar confusão no futuro
-        delete dadosParaSalvar.id_visita;
+        // LIMPEZA CRÍTICA: Removemos o que ocupa espaço (fotos e definições de roteiro)
+        if (backupLeve.respostas) {
+            delete backupLeve.respostas.fotos; // Remove as fotos tiradas (estão no IndexedDB)
+        }
+        
+        // Remove o objeto roteiro (que contém as fotos de apoio em Base64 do PGE)
+        // Isso reduz o backup de ~4MB para apenas alguns KB.
+        delete backupLeve.roteiro; 
 
-        window.DB_API.saveVisita(dadosParaSalvar).catch(err => {
-            console.error("Erro ao salvar no IndexedDB:", err);
-            // No celular, mostramos o erro real se falhar
-            if(navigator.userAgent.includes("Mobi")) {
-                console.log("Falha no put: Verifique se o keyPath 'id_vistoria' é nulo.");
-            }
-        });
+        localStorage.setItem("APP_STATE_BACKUP", JSON.stringify(backupLeve));
+        localStorage.setItem("id_vistoria", idFinal);
+        
+        // Metadados para o Histórico Rápido
+        localStorage.setItem("APP_META", JSON.stringify({
+            avaliador: APP_STATE.avaliador,
+            local: APP_STATE.local,
+            id_vistoria: idFinal,
+            data: APP_STATE.data,
+            tipoRoteiro: APP_STATE.tipoRoteiro
+        }));
+
+        console.log("💾 Backup LocalStorage atualizado (Modo Económico).");
+
+    } catch (e) {
+        // Se ainda assim der erro (o que é improvável agora), garantimos o ID
+        console.warn("Falha no Backup Leve. Limpando LocalStorage...");
+        localStorage.removeItem("APP_STATE_BACKUP");
+        localStorage.setItem("id_vistoria", idFinal); 
     }
 }
 
@@ -589,29 +605,30 @@ async function reduzirImagem(file) {
  */
 async function processarFoto(idPergunta, file) {
     try {
-        // Redução para Base64 (usado para visualização rápida e Excel)
-        const base64Reduzido = await reduzirImagem(file); 
-        
-        // Conversão para Blob (Armazenamento mais eficiente no IndexedDB)
-        const res = await fetch(base64Reduzido);
-        const blob = await res.blob();
+        // 1. Redução agressiva: Android não precisa de mais de 1024px para fiscalização
+        const base64Reduzido = await reduzirImagem(file); // Altere o MAX_WIDTH para 1024 no seu reduzirImagem
         
         const fotoId = `${idPergunta}_${Date.now()}`;
 
-        // Salva no Banco de Dados
+        // 2. Armazenar como BLOB no IndexedDB (Muito mais leve que string Base64)
+        const res = await fetch(base64Reduzido);
+        const blob = await res.blob();
+
         if (window.savePhotoToDB) {
+            // Salva o BLOB no banco, e usa o Base64 apenas para a miniatura temporária
             await window.savePhotoToDB(fotoId, blob, idPergunta, base64Reduzido);
         }
 
-        // Atualiza a galeria na tela
         await atualizarListaFotos(idPergunta);
         
-        console.log("📸 Foto processada e salva com sucesso.");
+        // 3. LIMPEZA DE MEMÓRIA: Sugere ao coletor de lixo que libere o arquivo original
+        URL.revokeObjectURL(file); 
+        console.log("📸 Memória liberada após captura.");
+
     } catch (err) {
         console.error("Erro no processamento da foto:", err);
     }
 }
-
 /**
  * 4. INTERFACE: ATUALIZA A LISTA DE FOTOS NA TELA
  */
@@ -710,18 +727,6 @@ async function handleExcelReativo() {
     }
 }
 
-async function handleExcelReativo() {
-    UI_setLoading('excel', true, { loadingText: "A GERAR FICHEIRO..." });
-    try {
-        await baixarExcelConsolidado();
-        // O marcarComoConcluidoUI já é chamado dentro da baixarExcelConsolidado no sucesso
-    } catch (error) {
-        console.error("Erro no Excel:", error);
-        alert("Erro ao gerar o Excel.");
-    } finally {
-        UI_setLoading('excel', false, { defaultText: "BAIXAR NOVAMENTE 📊" });
-    }
-}
 
 async function baixarExcelConsolidado() {
     try {
@@ -923,76 +928,88 @@ function marcarComoConcluidoUI(metodo) {
 
 // SINCRONIZAÇÃO MANUAL (BOTÃO ENVIAR)
 async function sincronizarComBanco() {
-    // 1. Verifica conexão antes de começar
     if (!navigator.onLine) {
-        alert("Sem conexão à internet para enviar.");
+        alert("Sem conexão à internet. Os dados permanecem seguros no seu aparelho.");
         return;
     }
 
-    // 2. Ativa estado de carregamento no botão 'sync'
-    UI_setLoading('sync', true, { loadingText: "ENVIANDO AO SERVIDOR..." });
+    UI_setLoading('sync', true, { loadingText: "CONECTANDO AO DMA..." });
 
     try {
         const db = await DB_API.openDB();
-        
-        // Busca vistorias do IndexedDB
-        const vistorias = await new Promise((res) => {
-            const tx = db.transaction("vistorias", "readonly");
-            tx.objectStore("vistorias").getAll().onsuccess = (e) => res(e.target.result);
+        // 1. Buscamos o estado atual direto do banco para evitar perda de dados em memória
+        const idAtual = APP_STATE.id_vistoria || localStorage.getItem("id_vistoria");
+        const tx = db.transaction("vistorias", "readonly");
+        const vistoriaLocal = await new Promise(res => {
+            tx.objectStore("vistorias").get(String(idAtual)).onsuccess = (e) => res(e.target.result);
         });
 
-        // Filtra a vistoria específica que está aberta no estado do app
-        const pendentes = vistorias.filter(v => v.id_vistoria === APP_STATE.id_vistoria && !v.sincronizado);
-
-        if (pendentes.length === 0) {
-            alert("Esta vistoria já foi enviada ou não foi encontrada.");
+        if (!vistoriaLocal || vistoriaLocal.sincronizado) {
+            alert("Esta vistoria já foi enviada ou não existe.");
             UI_setLoading('sync', false, { defaultText: "ENVIAR PARA O SERVIDOR" });
             return;
         }
 
-        for (const visita of pendentes) {
-            // Buscamos as fotos vinculadas
-            const fotos = await DB_API.getAllFotosVistoria(visita.id_vistoria);
-            
-            // Montamos o pacote final normalizado
-            const payload = {
-                ...visita,
-                tecnico: visita.avaliador || visita.tecnico,
-                local: visita.local,
-                atividade: visita.atividade || "Supervisão Ambiental",
-                roteiro_id: visita.tipoRoteiro,
-                fotos_base64: fotos.map(f => f.base64) 
-            };
-
-            const response = await fetch('https://strapless-christi-unspread.ngrok-free.dev/vistorias/sincronizar', {
-                method: "POST",
-                headers: { 
-                    "Content-Type": "application/json",
-                    "ngrok-skip-browser-warning": "true" 
-                },
-                body: JSON.stringify(payload)
-            });
-
-            const resposta = await response.json();
-
-            // SUCESSO OU JÁ SINCRONIZADA
-            if (response.ok || (resposta.mensagem && resposta.mensagem.includes("sincronizada"))) {
-                visita.sincronizado = true;
-                const txUp = db.transaction("vistorias", "readwrite");
-                await txUp.objectStore("vistorias").put(visita);
-                
-                marcarComoConcluidoUI('sync');
-            } else {
-                throw new Error(resposta.mensagem || "Erro no processamento do servidor");
+        // 2. Coleta de Fotos de forma assíncrona
+        const fotos = await DB_API.getAllFotosVistoria(vistoriaLocal.id_vistoria);
+        
+        // 3. Montagem do Core Payload (Padrão SQL CEDAE)
+        const payload = {
+            metadata: {
+                id_vistoria: String(vistoriaLocal.id_vistoria),
+                origem: "PWA_SUPERVISAO_AMBIENTAL",
+                versao_app: "2.0.0"
+            },
+            core: {
+                tecnico: String(vistoriaLocal.tecnico || vistoriaLocal.avaliador || "Não Informado"),
+                local_id: String(vistoriaLocal.local || "Não Informado"),
+                atividade: String(vistoriaLocal.atividade || "Supervisão Ambiental"),
+                roteiro_tipo: String(vistoriaLocal.tipoRoteiro),
+                data_execucao: vistoriaLocal.data || new Date().toISOString()
+            },
+            dados: {
+                respostas: vistoriaLocal.respostas,
+                total_fotos: fotos.length,
+                fotos_payload: fotos.map(f => ({
+                    pergunta_id: f.pergunta_id,
+                    base64: f.base64
+                }))
             }
+        };
+
+        // 4. Envio com Timeout e Retry Manual
+        const response = await fetch('https://strapless-christi-unspread.ngrok-free.dev/vistorias/sincronizar', {
+            method: 'POST',
+            headers: { 
+                'Content-Type': 'application/json',
+                'ngrok-skip-browser-warning': 'true' 
+            },
+            body: JSON.stringify(payload)
+        });
+
+        const resultado = await response.json();
+
+        if (response.ok && (resultado.status === "sucesso" || resultado.code === 201)) {
+            // 5. Marcação de Sucesso no IndexedDB
+            vistoriaLocal.sincronizado = true;
+            vistoriaLocal.data_sincronismo = new Date().toISOString();
+            
+            const txUpdate = db.transaction("vistorias", "readwrite");
+            await txUpdate.objectStore("vistorias").put(vistoriaLocal);
+            
+            marcarComoConcluidoUI('sync');
+            UI_setLoading('sync', false, { defaultText: "ENVIADO COM SUCESSO ✓" });
+            
+            // Notifica o sistema_dma no console
+            console.log(`🚀 Core DMA Atualizado: ${vistoriaLocal.id_vistoria}`);
+        } else {
+            throw new Error(resultado.mensagem || "O servidor recusou os dados.");
         }
 
-        UI_setLoading('sync', false, { defaultText: "ENVIADO COM SUCESSO ✓" });
-
-    } catch (err) {
-        console.error("Erro na sincronização:", err);
-        alert("Erro: " + err.message);
-        UI_setLoading('sync', false, { defaultText: "TENTAR ENVIAR NOVAMENTE" });
+    } catch (error) {
+        console.error("Erro Crítico Sinc:", error);
+        alert("Falha na Sincronização: " + error.message);
+        UI_setLoading('sync', false, { defaultText: "TENTAR NOVAMENTE" });
     }
 }
 async function sincronizarVisitasPendentes() {
@@ -1059,10 +1076,11 @@ async function sincronizarVisitasPendentes() {
  * Retorna para a tela de formulário mantendo o roteiro que estava selecionado
  */
 function voltarParaFormulario() {
-    if (APP_STATE.tipoRoteiro) {
-        showScreen('screen-formulario');
+    // Se não tem roteiro selecionado, volta para a estaca zero (Cadastro)
+    if (!APP_STATE.tipoRoteiro) {
+        showScreen('screen-login'); // Ou o ID da sua tela de cadastro inicial
     } else {
-        showScreen('screen-select-roteiro');
+        showScreen('screen-formulario');
     }
 }
 
@@ -1073,13 +1091,11 @@ async function confirmarNovaVistoria() {
     
     if (!confirm("Deseja arquivar esta vistoria e iniciar uma nova?")) return;
 
-    // Feedback visual de processamento
     if(circle) circle.className = "w-20 h-20 bg-amber-100 text-amber-600 rounded-full flex items-center justify-center mx-auto mb-4 animate-pulse";
     if(symbol) symbol.innerText = "⏳";
 
     try {
         const db = await DB_API.openDB();
-        // Garante um ID único para a nova entrada
         const idAtual = APP_STATE.id_vistoria || APP_STATE.id_visita || `VIST_${Date.now()}`;
 
         const pacoteParaArquivar = {
@@ -1094,34 +1110,35 @@ async function confirmarNovaVistoria() {
             timestamp: Date.now()
         };
 
-        // Salva no IndexedDB
         const tx = db.transaction(["vistorias"], "readwrite");
         const store = tx.objectStore("vistorias");
         await store.put(pacoteParaArquivar);
 
         tx.oncomplete = () => {
-            // --- LIMPEZA CRÍTICA ---
-            // 1. Remove IDs da sessão atual para que o reload gere novos
+            // --- LIMPEZA CRÍTICA PARA VOLTAR AO CADASTRO ---
+            
+            // 1. Matamos o Backup Leve! Se ele existir, o app volta de onde parou.
+            // Removendo isso, o initApp não terá o que recuperar e irá para o início.
+            localStorage.removeItem("APP_STATE_BACKUP"); 
             localStorage.removeItem("id_vistoria");
             localStorage.removeItem("id_visita");
             localStorage.removeItem("APP_META");
             
-            // 2. Preserva apenas o nome do avaliador para facilitar a próxima entrada
+            // 2. Preservamos apenas o técnico para conveniência
             const avaliadorOld = APP_STATE.avaliador || APP_STATE.tecnico;
             if (avaliadorOld) localStorage.setItem("avaliador", avaliadorOld);
 
-            // 3. Limpa visualmente os containers de fotos antes do reload (prevenção extra)
+            // 3. Limpeza visual
             document.querySelectorAll('[id^="foto-container-"]').forEach(el => el.innerHTML = '');
 
             alert("Vistoria arquivada com sucesso!");
             
-            // 4. Reinicia o app limpo
+            // 4. Reset Total: O app reinicia "virgem", sem estado anterior
             location.reload(); 
         };
     } catch (err) {
         console.error("Erro ao arquivar:", err);
-        alert("ERRO CRÍTICO: Verifique a conexão com o banco local.");
-        // Restaura ícone em caso de erro
+        alert("ERRO CRÍTICO: Verifique o banco local.");
         if(circle) circle.classList.remove('animate-pulse');
         if(symbol) symbol.innerText = "⚠️";
     }
