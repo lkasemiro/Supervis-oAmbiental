@@ -1,5 +1,5 @@
 const DB_NAME = "CEDAE_VistoriasDB";
-const DB_VERSION = 16; // Subimos a versão para aplicar os novos índices
+const DB_VERSION = 17; 
 const STORE_RESPOSTAS = "vistorias";
 const STORE_FOTOS = "fotos";
 
@@ -11,16 +11,13 @@ const DB_API = {
             request.onupgradeneeded = (event) => {
                 const db = event.target.result;
                 
-                // Loja de Vistorias
                 if (!db.objectStoreNames.contains(STORE_RESPOSTAS)) {
                     db.createObjectStore(STORE_RESPOSTAS, { keyPath: "id_vistoria" });
                 }
                 
-                // Loja de Fotos com índices reforçados
                 if (!db.objectStoreNames.contains(STORE_FOTOS)) {
                     const store = db.createObjectStore(STORE_FOTOS, { keyPath: "foto_id" });
                     store.createIndex("id_vistoria", "id_vistoria", { unique: false });
-                    store.createIndex("pergunta_id", "pergunta_id", { unique: false });
                 }
             };
             request.onsuccess = () => resolve(request.result);
@@ -28,9 +25,33 @@ const DB_API = {
         });
     },
 
-    // BUSCA INTELIGENTE: Pega fotos vinculadas especificamente a uma vistoria
+    // 1. SALVAMENTO: Alinhado com a estrutura do R
+    async saveVisita(estado) {
+        const db = await this.openDB();
+        const tx = db.transaction(STORE_RESPOSTAS, "readwrite");
+        const store = tx.objectStore(STORE_RESPOSTAS);
+
+        // Alinhamento exato com os campos que o seu api_sinc.R espera
+        const payloadParaSalvar = {
+            id_vistoria: estado.id_vistoria || `VIST_${Date.now()}`,
+            tecnico: estado.avaliador || "Técnico Local",
+            local: estado.local || "Não Informado",
+            data_hora: estado.data || new Date().toISOString(),
+            tipoRoteiro: estado.tipoRoteiro || "geral",
+            respostas: estado.respostas || {}, // Garante que nunca seja null
+            sincronizado: false,
+            ultima_atualizacao: new Date().toISOString()
+        };
+
+        return new Promise((resolve, reject) => {
+            const req = store.put(payloadParaSalvar);
+            req.onsuccess = () => resolve(payloadParaSalvar); // Retorna o objeto salvo
+            req.onerror = () => reject(req.error);
+        });
+    },
+
+    // 2. BUSCA FOTOS: Filtra por vistoria
     async getAllFotosVistoria(idVistoria) {
-        if (!idVistoria) return [];
         const db = await this.openDB();
         const tx = db.transaction([STORE_FOTOS], 'readonly');
         const store = tx.objectStore(STORE_FOTOS);
@@ -43,44 +64,8 @@ const DB_API = {
         });
     },
 
-    // SALVAMENTO NORMALIZADO: Prepara os dados para o R antes de guardar
-    async saveVisita(estado) {
-        const db = await this.openDB();
-        const tx = db.transaction(STORE_RESPOSTAS, "readwrite");
-        const store = tx.objectStore(STORE_RESPOSTAS);
-
-        // Criamos uma cópia limpa para não afetar o app em tempo real
-        const payloadParaSalvar = {
-            id_vistoria: estado.id_vistoria || estado.id_visita,
-            tecnico: estado.avaliador || estado.tecnico,
-            local: estado.local,
-            data_hora: estado.data_hora || new Date().toISOString(),
-            tipoRoteiro: estado.tipoRoteiro || estado.roteiro_id,
-            respostas: estado.respostas || {}, // Onde o pivot do R vai trabalhar
-            sincronizado: estado.sincronizado || false,
-            ultima_atualizacao: new Date().toISOString()
-        };
-
-        return new Promise((resolve, reject) => {
-            const req = store.put(payloadParaSalvar);
-            req.onsuccess = () => resolve(true);
-            req.onerror = () => reject(req.error);
-        });
-    },
-
-    async loadVisita(id) {
-        if (!id) return null;
-        const db = await this.openDB();
-        const tx = db.transaction(STORE_RESPOSTAS, "readonly");
-        const store = tx.objectStore(STORE_RESPOSTAS);
-        const req = store.get(id);
-        return new Promise((resolve) => {
-            req.onsuccess = () => resolve(req.result || null);
-            req.onerror = () => resolve(null);
-        });
-    },
-    // 1. BUSCA TUDO PARA SINCRONIZAR
-    async listarTodasVistorias() {
+    // 3. SINCRONIZADOR: Monta o "Pacote Completo" para o R
+    async prepararPacoteSincronizacao() {
         const db = await this.openDB();
         const tx = db.transaction([STORE_RESPOSTAS], 'readonly');
         const store = tx.objectStore(STORE_RESPOSTAS);
@@ -88,43 +73,45 @@ const DB_API = {
 
         return new Promise((resolve) => {
             req.onsuccess = async () => {
-                const vistorias = req.result || [];
-                // Para cada vistoria, buscamos suas fotos antes de retornar
-                const vistoriasCompletas = await Promise.all(vistorias.map(async (v) => {
+                const vistorias = req.result.filter(v => !v.sincronizado);
+                
+                // Aqui acontece a mágica: anexa as fotos antes de enviar para o R
+                const pacotes = await Promise.all(vistorias.map(async (v) => {
                     const fotos = await this.getAllFotosVistoria(v.id_vistoria);
-                    return { ...v, fotos_anexas: fotos }; // Pacote completo para o R
+                    return {
+                        metadata: { id_vistoria: v.id_vistoria },
+                        core: {
+                            data_execucao: v.data_hora,
+                            local_id: v.local
+                        },
+                        dados: {
+                            respostas: v.respostas,
+                            fotos_payload: fotos.map(f => ({
+                                pergunta_id: f.pergunta_id,
+                                base64: f.base64_data || f.base64 // suporte a ambos os nomes
+                            }))
+                        }
+                    };
                 }));
-                resolve(vistoriasCompletas);
+                resolve(pacotes);
             };
-            req.onerror = () => resolve([]);
         });
     },
 
-    // 2. DELETA APÓS SUCESSO NO R
-    async deletarVistoriaCompleta(idVistoria) {
+    // 4. LIMPEZA: Roda após o R retornar Sucesso (201)
+    async marcarComoSincronizado(idVistoria) {
         const db = await this.openDB();
-        const tx = db.transaction([STORE_RESPOSTAS, STORE_FOTOS], 'readwrite');
-        
-        // Deleta os dados de texto
-        tx.objectStore(STORE_RESPOSTAS).delete(idVistoria);
-        
-        // Deleta todas as fotos vinculadas (usando o índice)
-        const fotoStore = tx.objectStore(STORE_FOTOS);
-        const index = fotoStore.index("id_vistoria");
-        const cursorReq = index.openKeyCursor(IDBKeyRange.only(idVistoria));
-        
-        cursorReq.onsuccess = () => {
-            const cursor = cursorReq.result;
-            if (cursor) {
-                fotoStore.delete(cursor.primaryKey);
-                cursor.continue();
+        const tx = db.transaction([STORE_RESPOSTAS], 'readwrite');
+        const store = tx.objectStore(STORE_RESPOSTAS);
+        const req = store.get(idVistoria);
+
+        req.onsuccess = () => {
+            const data = req.result;
+            if(data) {
+                data.sincronizado = true;
+                store.put(data);
             }
         };
-
-        return new Promise((resolve) => {
-            tx.oncomplete = () => resolve(true);
-            tx.onerror = () => resolve(false);
-        });
     }
 };
 
