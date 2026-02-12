@@ -1,6 +1,5 @@
 // APP.JS – VERSÃO INTEGRAL CORRIGIDA (ORGANIZADA POR FLUXO)- main10
 
-
 // CONFIGURAÇÃO DE DEBUG (DESATIVAR LOGS NO ANDROID PARA EVITAR ERROS DE MEMÓRIA)
 const DEBUG_MODE = true; // Mude para true quando estiver testando no PC
 
@@ -848,64 +847,92 @@ async function handleSincronizacao() {
     UI_setLoading('sync', true, { loadingText: "A ENVIAR DADOS..." });
 
     try {
-        // 1. Busca as fotos vinculadas no IndexedDB
+        if (!APP_STATE?.id_vistoria) throw new Error("Vistoria não inicializada.");
+
+        // 1) fotos do IndexedDB (blob)
         const fotosNoBanco = await DB_API.getAllFotosVistoria(APP_STATE.id_vistoria);
-        
-        // 2. MONTAGEM DO PAYLOAD (ESTRUTURA EXATA PARA O R)
-        // O Plumber espera encontrar: metadata, core e dados
+
+        // 2) respostas: achata {geral,pge,aa} -> {pergunta_id: resposta}
+        const respostasFlat = {};
+        const blocos = APP_STATE.respostas || {};
+        for (const k of Object.keys(blocos)) {
+            const obj = blocos[k];
+            if (obj && typeof obj === "object") {
+                for (const pid of Object.keys(obj)) {
+                    respostasFlat[pid] = obj[pid];
+                }
+            }
+        }
+
+        // 3) local_id: se você só tem o texto, vira índice+1
+        let localIdNum = 1;
+        if (typeof APP_STATE.local === "string" && APP_STATE.local.trim()) {
+            const idx = LOCAIS_VISITA.indexOf(APP_STATE.local.trim());
+            if (idx >= 0) localIdNum = idx + 1;
+        }
+
+        // 4) monta FormData (API espera: payload + files)
+        const fd = new FormData();
+
+        const fotos_manifest = [];
+        for (const f of (fotosNoBanco || [])) {
+            const blob = f.blob_data || f.blob;
+            if (!blob) continue;
+
+            const foto_id = String(f.foto_id || crypto.randomUUID());
+            const pergunta_id = String(f.pergunta_id || "foto_geral");
+
+            // filename precisa bater com o manifest no R
+            const filename = `${foto_id}__${pergunta_id}.jpg`;
+
+            fotos_manifest.push({ foto_id, pergunta_id, filename });
+            fd.append("files", blob, filename);
+        }
+
         const payloadParaR = {
-            metadata: { 
-                id_vistoria: String(APP_STATE.id_vistoria) 
+            metadata: {
+                id_vistoria: String(APP_STATE.id_vistoria),
+                origem: "pwa_android"
             },
             core: {
                 data_execucao: APP_STATE.data || new Date().toISOString(),
-                local_id: String(APP_STATE.local || "1"), // Garante que não vá vazio
-                tecnico: String(APP_STATE.avaliador || "Não Informado")
+                local_id: String(localIdNum),
+                tecnico: String(APP_STATE.avaliador || "Não Informado"),
+                atividade: APP_STATE.tipoRoteiro || "supervisao",
+                usuario_id: APP_STATE.usuario_id || null
             },
             dados: {
-                respostas: APP_STATE.respostas, // Objeto com Sim/Não
-                // FORMATO CRÍTICO: O R precisa do pergunta_id para cada foto
-                fotos_payload: fotosNoBanco.map(f => ({
-                    pergunta_id: f.pergunta_id || "foto_geral",
-                    base64: f.base64_data || f.base64
-                }))
+                respostas: respostasFlat,
+                fotos_manifest
             }
         };
 
-        // 3. ENVIO PARA O SERVIDOR
-        const response = await fetch('https://strapless-christi-unspread.ngrok-free.dev/vistorias/sincronizar', {
-            method: 'POST',
-            headers: { 
-                'Content-Type': 'application/json',
-                'ngrok-skip-browser-warning': 'true' 
-            },
-            body: JSON.stringify(payloadParaR)
-        });
+        fd.append("payload", JSON.stringify(payloadParaR));
 
-        // Verifica se a resposta é um JSON válido
-        const textoResposta = await response.text();
-        let resultado;
-        try {
-            resultado = JSON.parse(textoResposta);
-        } catch (e) {
-            throw new Error("O servidor R retornou um formato inválido.");
-        }
-
-        if (response.ok && (resultado.status === "sucesso" || resultado.code === 201)) {
-            // 4. SUCESSO: Atualiza UI e Banco Local
-            marcarComoConcluidoUI('servidor');
-            UI_setLoading('sync', false, { defaultText: "ENVIADO COM SUCESSO ✓" });
-            
-            // Marca como sincronizado no IndexedDB para não enviar duplicado
-            if (window.DB_API && window.DB_API.marcarComoSincronizado) {
-                await DB_API.marcarComoSincronizado(APP_STATE.id_vistoria);
+        // 5) envia (NÃO setar Content-Type manualmente)
+        const response = await fetch(
+            "https://strapless-christi-unspread.ngrok-free.dev/vistorias/sincronizar",
+            {
+                method: "POST",
+                headers: { "ngrok-skip-browser-warning": "true" },
+                body: fd
             }
-            
-            console.log("🚀 Sincronização concluída com sucesso!");
+        );
 
-        } else {
-            throw new Error(resultado.message || "Erro interno no servidor R");
+        const resultado = await response.json().catch(() => ({}));
+        if (!response.ok || resultado.status !== "sucesso") {
+            throw new Error(resultado.message || `Erro no servidor (HTTP ${response.status})`);
         }
+
+        // 6) marca local como sincronizado (se existir)
+        if (window.DB_API && typeof DB_API.marcarComoSincronizado === "function") {
+            await DB_API.marcarComoSincronizado(APP_STATE.id_vistoria);
+        }
+
+        marcarComoConcluidoUI('servidor');
+        UI_setLoading('sync', false, { defaultText: "ENVIADO COM SUCESSO ✓" });
+
+        console.log("🚀 Sincronização concluída com sucesso!");
 
     } catch (error) {
         console.error("Erro na Sincronização:", error);
@@ -913,6 +940,7 @@ async function handleSincronizacao() {
         UI_setLoading('sync', false, { defaultText: "TENTAR NOVAMENTE" });
     }
 }
+
 
 /** Gerencia estados de botões e spinners */
 function UI_setLoading(action, isLoading, config = {}) {
@@ -938,41 +966,40 @@ function UI_setLoading(action, isLoading, config = {}) {
 function marcarComoConcluidoUI(metodo, payloadExtra = {}) {
     const circle = document.getElementById('status-icon-circle');
     const symbol = document.getElementById('status-icon-symbol');
-    const title = document.getElementById('status-final-title');
-    const text = document.getElementById('status-final-text');
+    const title  = document.getElementById('status-final-title');
+    const text   = document.getElementById('status-final-text');
 
     if (!circle || !symbol) return;
 
-    // Efeito visual de "pulso" para feedback tátil/visual
+    // pulso leve
     circle.classList.add('scale-110');
     setTimeout(() => circle.classList.remove('scale-110'), 200);
 
-    // Troca cores: de Alerta (Amber) para Sucesso (Green)
+    // base visual de sucesso (ok para excel e sync)
     circle.classList.replace('bg-amber-100', 'bg-green-500');
     circle.classList.replace('text-amber-600', 'text-white');
-    
     symbol.innerText = "✓";
-    
-    if (title) title.innerText = "SINCRONIZADO!";
-    
-    if (text) {
-        if (metodo === 'excel') {
-            text.innerText = "A planilha local foi gerada com sucesso.";
-        } else {
-            // Pegamos a atividade do APP_STATE ou do que o servidor retornou
-            const atividade = APP_STATE.atividade || "Vistoria";
-            const idVistoria = APP_STATE.id_vistoria;
-            
-            // Mensagem clara de que o dado saiu do celular e entrou no banco da CEDAE
-            text.innerHTML = `
-                <strong>${atividade} enviada com sucesso!</strong><br>
-                <span class="text-sm opacity-75">ID: ${idVistoria}</span><br>
-                Os dados e fotos já estão disponíveis no Painel de Supervisão.
-            `;
-        }
+
+    // ✅ 1) Excel: NÃO mexe no botão de sync
+    if (metodo === 'excel') {
+        if (title) title.innerText = "RELATÓRIO GERADO!";
+        if (text)  text.innerText  = "A planilha local foi gerada com sucesso.";
+        return; // <- CRÍTICO: sai aqui
     }
 
-    // [OPCIONAL] Bloqueia novas edições para evitar duplicidade após sucesso
+    // ✅ 2) Sync/Servidor: aí sim bloqueia e pinta btn-sync
+    if (title) title.innerText = "SINCRONIZADO!";
+    if (text) {
+        const atividade = APP_STATE.atividade || "Vistoria";
+        const idVistoria = APP_STATE.id_vistoria;
+
+        text.innerHTML = `
+            <strong>${atividade} enviada com sucesso!</strong><br>
+            <span class="text-sm opacity-75">ID: ${idVistoria}</span><br>
+            Os dados e fotos já estão disponíveis no Painel de Supervisão.
+        `;
+    }
+
     const btnSync = document.getElementById('btn-sync');
     if (btnSync) {
         btnSync.innerHTML = "ENVIADO ✓";
@@ -1142,7 +1169,7 @@ function removerVisitaDoBanco(db, id) {
 window.addEventListener('online', () => {
     console.log("Sinal recuperado! Iniciando sincronização...");
     atualizarStatusTexto("Sincronizando...");
-    sincronizarComBanco();
+    handleSincronizacao();
 });
 
 // Função segura para atualizar status
