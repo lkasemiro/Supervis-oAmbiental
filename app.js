@@ -844,7 +844,7 @@ async function handleSincronizacao() {
         return;
     }
 
-    UI_setLoading('sync', true, { loadingText: "A ENVIAR DADOS..." });
+    UI_setLoading("sync", true, { loadingText: "A ENVIAR DADOS..." });
 
     try {
         if (!APP_STATE?.id_vistoria) throw new Error("Vistoria não inicializada.");
@@ -859,7 +859,7 @@ async function handleSincronizacao() {
             const obj = blocos[k];
             if (obj && typeof obj === "object") {
                 for (const pid of Object.keys(obj)) {
-                    respostasFlat[pid] = obj[pid];
+                    respostasFlat[String(pid)] = obj[pid];
                 }
             }
         }
@@ -875,17 +875,33 @@ async function handleSincronizacao() {
         const fd = new FormData();
 
         const fotos_manifest = [];
-        for (const f of (fotosNoBanco || [])) {
+        const fotos = Array.isArray(fotosNoBanco) ? fotosNoBanco : [];
+
+        // helper: filename seguro (evita /, espaços, acentos, etc.)
+        const safeSlug = (s) => String(s || "")
+            .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+            .replace(/[^a-zA-Z0-9_-]+/g, "_")
+            .replace(/_+/g, "_")
+            .replace(/^_+|_+$/g, "");
+
+        for (const f of fotos) {
             const blob = f.blob_data || f.blob;
             if (!blob) continue;
 
+            // IMPORTANTÍSSIMO: preservar foto_id se existir
             const foto_id = String(f.foto_id || crypto.randomUUID());
             const pergunta_id = String(f.pergunta_id || "foto_geral");
 
             // filename precisa bater com o manifest no R
-            const filename = `${foto_id}__${pergunta_id}.jpg`;
+            const filename = `${safeSlug(foto_id)}__${safeSlug(pergunta_id)}.jpg`;
 
-            fotos_manifest.push({ foto_id, pergunta_id, filename });
+            fotos_manifest.push({
+                foto_id,
+                pergunta_id,
+                filename
+            });
+
+            // field name "files" (pra bater com req$files$files no R)
             fd.append("files", blob, filename);
         }
 
@@ -907,7 +923,8 @@ async function handleSincronizacao() {
             }
         };
 
-        fd.append("payload", JSON.stringify(payloadParaR));
+        // payload como STRING única (evita virar vetor no R)
+        fd.set("payload", JSON.stringify(payloadParaR));
 
         // 5) envia (NÃO setar Content-Type manualmente)
         const response = await fetch(
@@ -919,7 +936,15 @@ async function handleSincronizacao() {
             }
         );
 
-        const resultado = await response.json().catch(() => ({}));
+        // Debug robusto: pega texto, tenta parsear JSON
+        const rawText = await response.text();
+        let resultado = {};
+        try {
+            resultado = rawText ? JSON.parse(rawText) : {};
+        } catch (_) {
+            resultado = { status: "erro", message: rawText || "Resposta não-JSON do servidor." };
+        }
+
         if (!response.ok || resultado.status !== "sucesso") {
             throw new Error(resultado.message || `Erro no servidor (HTTP ${response.status})`);
         }
@@ -929,15 +954,18 @@ async function handleSincronizacao() {
             await DB_API.marcarComoSincronizado(APP_STATE.id_vistoria);
         }
 
-        marcarComoConcluidoUI('servidor');
-        UI_setLoading('sync', false, { defaultText: "ENVIADO COM SUCESSO ✓" });
+        marcarComoConcluidoUI("servidor");
+        UI_setLoading("sync", false, { defaultText: "ENVIADO COM SUCESSO ✓" });
 
-        console.log("🚀 Sincronização concluída com sucesso!");
+        console.log("🚀 Sincronização concluída com sucesso!", {
+            vistoria: APP_STATE.id_vistoria,
+            fotos_enviadas: fotos_manifest.length
+        });
 
     } catch (error) {
         console.error("Erro na Sincronização:", error);
         alert("Falha na Sincronização: " + error.message);
-        UI_setLoading('sync', false, { defaultText: "TENTAR NOVAMENTE" });
+        UI_setLoading("sync", false, { defaultText: "TENTAR NOVAMENTE" });
     }
 }
 
