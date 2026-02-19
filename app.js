@@ -48,7 +48,7 @@ function carregarMetaDoLocalStorage() {
             const meta = JSON.parse(metaStr);
             APP_STATE.avaliador = meta.avaliador || "";
             APP_STATE.local = meta.local || "";
-            APP_STATE.id_visita = meta.id_visita || "";
+            APP_STATE.id_vistoria = meta.id_vistoria || meta.id_visita || "";
             APP_STATE.data = meta.data || "";
 
             // Preenche os campos da tela de cadastro se existirem
@@ -77,167 +77,296 @@ function sincronizarInterfaceComEstado() {
     
     if (elAval) elAval.value = APP_STATE.avaliador || "";
     if (elLocal) elLocal.value = APP_STATE.local || "";
-    if (elData) elData.value = APP_STATE.data || "";
+    if (elData) elData.value = _toDateInputValue(APP_STATE.data);
+
 }
 
 
-// 2. InitApp com prioridade total ao IndexedDB
+/// 2. InitApp com prioridade total ao IndexedDB  ✅ (EDITADO)
 async function initApp() {
-    console.log("🚀 Iniciando App com Proteção Android (Foco IndexedDB)...");
-    
-    // Passo A: Identificação básica imediata
-    const idVistoriaSalvo = localStorage.getItem("id_vistoria");
-    APP_STATE.id_vistoria = idVistoriaSalvo || `VIST_${Date.now()}`;
-    
-    if (!idVistoriaSalvo) {
-        localStorage.setItem("id_vistoria", APP_STATE.id_vistoria);
-    }
+  console.log("🚀 Iniciando App com Proteção Android (Foco IndexedDB)...");
 
-    try {
-        // Passo B: Carregamento do IndexedDB (Aguardamos antes de seguir)
-        // Isso garante que as respostas e fotos carreguem ANTES da UI aparecer
-        if (window.DB_API && window.DB_API.loadVisita) {
-            const dadosDoBanco = await DB_API.loadVisita(APP_STATE.id_vistoria);
-            
-            if (dadosDoBanco) {
-                console.log("♻️ Estado carregado do IndexedDB:", APP_STATE.id_vistoria);
-                // O estado agora é o que veio do banco, muito mais seguro que o LocalStorage
-                APP_STATE = { ...APP_STATE, ...dadosDoBanco };
-                // Normalização de campos (compatibilidade entre DB e UI)
-                if (dadosDoBanco.tecnico && !APP_STATE.avaliador) APP_STATE.avaliador = dadosDoBanco.tecnico;
-                if (dadosDoBanco.data_hora && !APP_STATE.data) APP_STATE.data = dadosDoBanco.data_hora;
-                // Garante estrutura de respostas
-                if (dadosDoBanco.respostas && typeof dadosDoBanco.respostas === 'object') {
-                    // mantém como está (pode ser {geral:{},pge:{},aa:{}} ou outro)
-                    APP_STATE.respostas = dadosDoBanco.respostas;
-                }
+  // ------------------------------------------------------------
+  // Passo A: ID da vistoria (sempre existe)
+  // ------------------------------------------------------------
+  const idSalvo = localStorage.getItem("id_vistoria");
+  const idAtual = idSalvo || `VIST_${Date.now()}`;
+  APP_STATE.id_vistoria = idAtual;
+  if (!idSalvo) localStorage.setItem("id_vistoria", idAtual);
 
-            } else {
-                // Se não há nada no banco, tenta o backup de emergência do LocalStorage
-                const backup = localStorage.getItem("APP_STATE_BACKUP");
-                if (backup) {
-                    APP_STATE = JSON.parse(backup);
-                    console.log("⚠️ Usando backup emergencial do LocalStorage.");
-                }
-            }
-        }
-    } catch (e) {
-        console.error("Erro crítico no carregamento inicial:", e);
-    }
+  // ------------------------------------------------------------
+  // Passo B: Carregar do IndexedDB (fonte da verdade)
+  // ------------------------------------------------------------
+  try {
+    if (window.DB_API && typeof DB_API.loadVisita === "function") {
+      const dadosDoBanco = await DB_API.loadVisita(idAtual);
 
-    // Passo C: Configuração dos Seletores (Seu código original preservado)
-    const selLocal = document.getElementById("local");
-    if (selLocal) {
-        selLocal.innerHTML = `<option value="">Selecionar Local...</option>` +
-            LOCAIS_VISITA.map(l => `<option value="${l}">${l}</option>`).join("");
+      if (dadosDoBanco) {
+        console.log("♻️ Estado carregado do IndexedDB:", idAtual);
 
-        
-        if (APP_STATE.local) selLocal.value = APP_STATE.local;
-        
-        selLocal.onchange = () => {
-            APP_STATE.local = selLocal.value;
-            // IMPORTANTE: Agora salvamos no IndexedDB a cada mudança
-            if(window.DB_API) DB_API.saveVisita(APP_STATE); 
+        // mescla sem trazer lixo pesado do state atual
+        APP_STATE = {
+          ...APP_STATE,
+          ...dadosDoBanco,
+          id_vistoria: idAtual, // garante
         };
-    }
 
-    sincronizarInterfaceComEstado();
+        // normalizações (compat)
+        if (dadosDoBanco.tecnico && !APP_STATE.avaliador) APP_STATE.avaliador = dadosDoBanco.tecnico;
+        if (dadosDoBanco.data_hora && !APP_STATE.data) APP_STATE.data = dadosDoBanco.data_hora;
 
-    // Passo D: Direcionamento de Tela
-    if (APP_STATE.local && APP_STATE.avaliador) {
-        showScreen("screen-select-roteiro");
-    } else {
-        showScreen("screen-cadastro");
-    }
-}
-function validarEComecar() {
-    const elAval = document.getElementById("avaliador");
-    const elLocal = document.getElementById("local");
-    const elData = document.getElementById("data_visita");
-    const elColab = document.getElementById("colaborador");
-
-    if (!elAval.value || !elLocal.value || !elData.value) {
-        alert("Preencha Avaliador, Local e Data!");
-        return;
-    }
-
-    // Atualiza Estado Global
-    APP_STATE.avaliador = elAval.value;
-    APP_STATE.local = elLocal.value;
-    APP_STATE.data = elData.value;
-    APP_STATE.colaborador = elColab ? elColab.value : "";
-    APP_STATE.id_vistoria = `VIST_${Date.now()}`; // Cria o ID único aqui
-    localStorage.setItem("id_vistoria", APP_STATE.id_vistoria);
-    
-    registrarResposta(null, null); // Salva os metadados iniciais
-    showScreen("screen-select-roteiro");
-}
-/// 4. PERSISTÊNCIA DE RESPOSTAS (VERSÃO ALINHADA COM O PLUMBER)
-function registrarResposta(idPergunta, valor, tipoRoteiro) {
-    // 1. Identifica o roteiro ativo e garante estrutura
-    const roteiroAlvo = tipoRoteiro || APP_STATE.tipoRoteiro;
-    if (!roteiroAlvo) return;
-
-    if (!APP_STATE.respostas[roteiroAlvo]) {
-        APP_STATE.respostas[roteiroAlvo] = {};
-    }
-
-    // 2. Registra o valor no Estado Global (RAM)
-    if (idPergunta !== null) {
-        if (roteiroAlvo === "pge") {
-            const chaveComposta = `${idPergunta}_${APP_STATE.sublocal || 'Geral'}`;
-            APP_STATE.respostas.pge[chaveComposta] = valor;
+        // garante estrutura de respostas
+        if (!APP_STATE.respostas || typeof APP_STATE.respostas !== "object") {
+          APP_STATE.respostas = { geral: {}, pge: {}, aa: {} };
         } else {
-            APP_STATE.respostas[roteiroAlvo][idPergunta] = valor;
+          APP_STATE.respostas.geral = APP_STATE.respostas.geral || {};
+          APP_STATE.respostas.pge   = APP_STATE.respostas.pge   || {};
+          APP_STATE.respostas.aa    = APP_STATE.respostas.aa    || {};
         }
+
+      } else {
+        // fallback leve (último recurso)
+        const backup = localStorage.getItem("APP_STATE_BACKUP");
+        if (backup) {
+          try {
+            const b = JSON.parse(backup);
+            APP_STATE = {
+              ...APP_STATE,
+              ...b,
+              id_vistoria: idAtual
+            };
+
+            // garante estrutura respostas também no fallback
+            if (!APP_STATE.respostas || typeof APP_STATE.respostas !== "object") {
+              APP_STATE.respostas = { geral: {}, pge: {}, aa: {} };
+            } else {
+              APP_STATE.respostas.geral = APP_STATE.respostas.geral || {};
+              APP_STATE.respostas.pge   = APP_STATE.respostas.pge   || {};
+              APP_STATE.respostas.aa    = APP_STATE.respostas.aa    || {};
+            }
+
+            console.log("⚠️ Usando backup emergencial do LocalStorage.");
+          } catch {}
+        }
+      }
+    } else {
+      console.warn("DB_API.loadVisita indisponível — iniciando sem carregar IndexedDB.");
     }
+  } catch (e) {
+    console.error("Erro crítico no carregamento inicial:", e);
+  }
 
-    // 3. PADRONIZAÇÃO DE ID (Essencial para o vínculo no SQLite)
-    const idFinal = APP_STATE.id_vistoria || localStorage.getItem("id_vistoria");
-    APP_STATE.id_vistoria = idFinal; 
+  // ------------------------------------------------------------
+  // Passo C: Configuração do seletor de local + persistência limpa
+  // ------------------------------------------------------------
+  const selLocal = document.getElementById("local");
+  if (selLocal) {
+    // garante opções
+    selLocal.innerHTML =
+      `<option value="">Selecionar Local...</option>` +
+      LOCAIS_VISITA.map(l => `<option value="${l}">${l}</option>`).join("");
 
-    // 4. PERSISTÊNCIA NO INDEXEDDB (O que o Shiny vai ler)
-    if (window.DB_API && window.DB_API.saveVisita) {
-        // Criamos o objeto exatamente como a API do R espera receber
-        const dadosParaBanco = {
-            id_vistoria: idFinal,
-            avaliador: APP_STATE.avaliador,
-            local: APP_STATE.local,
-            data: APP_STATE.data,
-            tipoRoteiro: roteiroAlvo,
-            respostas: APP_STATE.respostas, // Enviamos o objeto de respostas completo
+    if (APP_STATE.local) selLocal.value = APP_STATE.local;
+
+    selLocal.onchange = async () => {
+      APP_STATE.local = selLocal.value;
+
+      // ✅ salva SOMENTE payload limpo (não salva APP_STATE cru!)
+      if (window.DB_API && typeof DB_API.saveVisita === "function") {
+        const id = APP_STATE.id_vistoria || localStorage.getItem("id_vistoria") || `VIST_${Date.now()}`;
+        APP_STATE.id_vistoria = id;
+        localStorage.setItem("id_vistoria", id);
+
+        try {
+          await DB_API.saveVisita({
+            id_vistoria: id,
+            avaliador: APP_STATE.avaliador || "",
+            local: APP_STATE.local || "",
+            data: APP_STATE.data || new Date().toISOString(),
+            tipoRoteiro: APP_STATE.tipoRoteiro || "geral",
+            respostas: APP_STATE.respostas || { geral: {}, pge: {}, aa: {} },
             sincronizado: false
-        };
-        
-        window.DB_API.saveVisita(dadosParaBanco)
-            .then(() => console.log(`✅ IndexedDB: Gravado com sucesso.`))
-            .catch(err => console.error("❌ Erro no IndexedDB:", err));
-    }
+          });
+          if (DEBUG_MODE) console.log("✅ IndexedDB: metadados atualizados (local).", id);
+        } catch (err) {
+          console.error("❌ IndexedDB: falha ao salvar metadados no onchange do local:", err);
+        }
+      }
+    };
+  }
 
-    // 5. BACKUP DE EMERGÊNCIA (LOCALSTORAGE - MANTENDO APENAS TEXTO LEVE)
-    try {
-        const backupLeve = {
-            id_vistoria: idFinal,
-            avaliador: APP_STATE.avaliador,
-            local: APP_STATE.local,
-            data: APP_STATE.data,
-            tipoRoteiro: roteiroAlvo,
-            respostas: APP_STATE.respostas // Respostas em texto são leves
-        };
-        
-        // REMOÇÃO CRÍTICA: Nunca salvar imagens ou definições de roteiro pesadas aqui
-        if (backupLeve.respostas.fotos) delete backupLeve.respostas.fotos;
-        delete backupLeve.roteiro; 
+  // Preenche inputs (avaliador/local/data) com APP_STATE
+  sincronizarInterfaceComEstado();
 
-        localStorage.setItem("APP_STATE_BACKUP", JSON.stringify(backupLeve));
-        localStorage.setItem("id_vistoria", idFinal);
-
-        console.log("💾 Backup LocalStorage atualizado.");
-    } catch (e) {
-        console.warn("LocalStorage cheio! Mantendo apenas o ID.");
-        localStorage.setItem("id_vistoria", idFinal); 
-    }
+  // ------------------------------------------------------------
+  // Passo D: Direcionamento de tela
+  // ------------------------------------------------------------
+  if (APP_STATE.local && APP_STATE.avaliador) {
+    showScreen("screen-select-roteiro");
+  } else {
+    showScreen("screen-cadastro");
+  }
 }
+
+// ============================================================
+// VALIDAR E COMEÇAR — versão robusta (offline-first real)
+// - valida campos
+// - cria id_vistoria único
+// - salva METADADOS no IndexedDB imediatamente (sem depender de roteiro)
+// - limpa estado de formulário e vai para seleção de roteiro
+// ============================================================
+async function validarEComecar() {
+  const elAval  = document.getElementById("avaliador");
+  const elLocal = document.getElementById("local");
+  const elData  = document.getElementById("data_visita");
+  const elColab = document.getElementById("colaborador");
+
+  const avaliador = (elAval?.value || "").trim();
+  const local     = (elLocal?.value || "").trim();
+  const data      = (elData?.value || "").trim();
+  const colab     = (elColab?.value || "").trim();
+
+  if (!avaliador || !local || !data) {
+    alert("Preencha Avaliador, Local e Data!");
+    return;
+  }
+
+  if (!window.DB_API || typeof DB_API.saveVisita !== "function") {
+    alert("ERRO: IndexedDB não carregado (DB_API.saveVisita indisponível).");
+    console.error("DB_API.saveVisita não disponível. Verifique se indexedDB.js foi carregado antes do app.js.");
+    return;
+  }
+
+  // 1) cria um ID único e estável (inclui local para ficar legível)
+  const localFormatado = String(local)
+    .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-zA-Z0-9]+/g, "")
+    .toUpperCase();
+
+  const id = `VIST_${Date.now()}_${localFormatado || "SEMLOCAL"}`;
+
+  // 2) atualiza APP_STATE (zera o que é do formulário)
+  APP_STATE.avaliador = avaliador;
+  APP_STATE.local = local;
+  APP_STATE.data = data;
+  APP_STATE.colaborador = colab;
+
+  APP_STATE.id_vistoria = id;
+  APP_STATE.tipoRoteiro = null;
+  APP_STATE.sublocal = "";
+  APP_STATE.roteiro = [];
+  if (!APP_STATE.respostas || typeof APP_STATE.respostas !== "object") {
+    APP_STATE.respostas = { geral: {}, pge: {}, aa: {} };
+  }
+
+  // 3) persiste mínimos no localStorage (recuperação pós reload)
+  localStorage.setItem("id_vistoria", id);
+  localStorage.setItem("avaliador", avaliador);
+  localStorage.setItem("local", local);
+  localStorage.setItem("data", data);
+
+  // 4) SALVA METADADOS NO INDEXEDDB AGORA (não depende de roteiro)
+  //    cria um "esqueleto" persistente que já aparece como pendente
+  try {
+    await DB_API.saveVisita({
+      id_vistoria: id,
+      avaliador,
+      local,
+      data,
+      tipoRoteiro: "geral", // placeholder; será atualizado quando escolher roteiro
+      respostas: APP_STATE.respostas,
+      sincronizado: false
+    });
+
+    console.log("✅ Vistoria iniciada e salva no IndexedDB (metadados):", id);
+  } catch (e) {
+    console.error("❌ Falha ao salvar metadados no IndexedDB:", e);
+    alert("ERRO: não foi possível iniciar a vistoria (falha ao gravar no IndexedDB).");
+    return;
+  }
+
+  showScreen("screen-select-roteiro");
+}
+
+
+// ============================================================
+// REGISTRAR RESPOSTA — versão robusta (offline-first real)
+// - atualiza APP_STATE
+// - salva no IndexedDB sempre (com tipoRoteiro válido ou placeholder)
+// - mantém backup leve no localStorage
+// ============================================================
+function registrarResposta(idPergunta, valor, tipoRoteiro) {
+  // 0) garante id_vistoria
+  const idFinal = APP_STATE.id_vistoria || localStorage.getItem("id_vistoria") || `VIST_${Date.now()}`;
+  APP_STATE.id_vistoria = idFinal;
+  localStorage.setItem("id_vistoria", idFinal);
+
+  // 1) define roteiro alvo (se ainda não houver, usa placeholder "geral")
+  const roteiroAlvo = tipoRoteiro || APP_STATE.tipoRoteiro || "geral";
+
+  // 2) garante estrutura respostas
+  if (!APP_STATE.respostas || typeof APP_STATE.respostas !== "object") {
+    APP_STATE.respostas = { geral: {}, pge: {}, aa: {} };
+  }
+  if (!APP_STATE.respostas[roteiroAlvo]) {
+    APP_STATE.respostas[roteiroAlvo] = {};
+  }
+
+  // 3) escreve a resposta no estado (se veio uma pergunta)
+  if (idPergunta !== null && idPergunta !== undefined) {
+    if (roteiroAlvo === "pge") {
+      // PGE: chave composta por sublocal (para não sobrescrever)
+      const sub = APP_STATE.sublocal || "Geral";
+      const chaveComposta = `${idPergunta}_${sub}`;
+      APP_STATE.respostas.pge[chaveComposta] = valor;
+    } else {
+      APP_STATE.respostas[roteiroAlvo][idPergunta] = valor;
+    }
+  }
+
+  // 4) persiste no IndexedDB (fonte da verdade)
+  if (window.DB_API && typeof DB_API.saveVisita === "function") {
+    const payload = {
+      id_vistoria: idFinal,
+      avaliador: APP_STATE.avaliador || "",
+      local: APP_STATE.local || "",
+      data: APP_STATE.data || new Date().toISOString(),
+      tipoRoteiro: roteiroAlvo,          // agora sempre tem algo
+      respostas: APP_STATE.respostas,    // manda o objeto todo
+      sincronizado: false
+    };
+
+    window.DB_API.saveVisita(payload)
+      .then(() => {
+        if (DEBUG_MODE) console.log("✅ IndexedDB: visita atualizada:", idFinal);
+      })
+      .catch(err => console.error("❌ IndexedDB: erro ao salvar visita:", err));
+  } else {
+    console.warn("DB_API.saveVisita indisponível — mantendo apenas backup no localStorage.");
+  }
+
+  // 5) backup leve no localStorage (sem fotos / sem roteiro pesado)
+  try {
+    const backupLeve = {
+      id_vistoria: idFinal,
+      avaliador: APP_STATE.avaliador || "",
+      local: APP_STATE.local || "",
+      data: APP_STATE.data || "",
+      tipoRoteiro: roteiroAlvo,
+      respostas: APP_STATE.respostas
+    };
+
+    // nunca guardar coisas pesadas
+    if (backupLeve.respostas?.fotos) delete backupLeve.respostas.fotos;
+    delete backupLeve.roteiro;
+
+    localStorage.setItem("APP_STATE_BACKUP", JSON.stringify(backupLeve));
+  } catch (e) {
+    console.warn("LocalStorage cheio — mantendo apenas id_vistoria.");
+    localStorage.setItem("id_vistoria", idFinal);
+  }
+}
+
 // 6. SELEÇÃO DE ROTEIRO (FLUXO PRINCIPAL)
 async function selectRoteiro(tipo) {
 
@@ -283,6 +412,7 @@ async function selectRoteiro(tipo) {
         montarSecoes();
         renderFormulario();
     }
+    registrarResposta(null, null, tipo); 
 
     showScreen("screen-formulario");
 }
@@ -330,20 +460,20 @@ function montarSublocaisFiltrados(localEscolhido) {
     if (img) img.remove();
 
     selSub.onchange = () => {
-    if (selSub.value) {
-        APP_STATE.sublocal = selSub.value;
-        
-        // 1. Limpa o que tiver de pergunta velha primeiro
-        document.getElementById("conteudo_formulario").innerHTML = ""; 
-        
-        // 2. Coloca a imagem (ela dará o prepend no container vazio)
-        exibirImagemApoioSublocal(selSub.value);
-        
-        // 3. Monta as seções e renderiza (o novo renderFormulario não vai apagar a imagem)
-        montarSecoes();
-        renderFormulario();
-    }
+  if (selSub.value) {
+    APP_STATE.sublocal = selSub.value;
+
+    registrarResposta(null, null, "pge"); // 👈 salva estado do sublocal
+
+    document.getElementById("conteudo_formulario").innerHTML = "";
+    exibirImagemApoioSublocal(selSub.value);
+    montarSecoes();
+    renderFormulario();
+
+    if (typeof applyConditionalLogic === "function") applyConditionalLogic(); // opcional e leve
+  }
 };
+
 }
 
 // 8. IMAGEM DE APOIO (PGE)
@@ -443,7 +573,20 @@ function renderFormulario(secaoFiltrada = null) {
         div.id = `group_${p.id}`;
         div.className = "bg-white p-7 rounded-[2rem] shadow-sm border border-slate-100 mb-6 animate-in transition-all";
         
-        const valorSalvo = APP_STATE.respostas[APP_STATE.tipoRoteiro]?.[p.id] ?? "";
+        let valorSalvo = "";
+
+        if (APP_STATE.tipoRoteiro === "pge") {
+            const subAtual =
+                document.getElementById("sublocal_select")?.value ||
+                APP_STATE.sublocal ||
+                "Geral";
+
+            const chaveComposta = `${p.id}_${subAtual}`;
+            valorSalvo = APP_STATE.respostas.pge?.[chaveComposta] ?? "";
+        } else {
+            valorSalvo = APP_STATE.respostas[APP_STATE.tipoRoteiro]?.[p.id] ?? "";
+        }
+
 
         div.innerHTML = `
             <label class="block font-black text-slate-700 text-[13px] uppercase tracking-tight mb-5 leading-tight">
@@ -595,73 +738,14 @@ function applyConditionalLogic() {
         if (cond && pai) {
             const el = document.getElementById(`group_${p.id}`);
             if (el) {
-                const valorPai = APP_STATE.respostas[tipo][pai];
+                const valorPai = (APP_STATE.tipoRoteiro === "pge")
+                ? (APP_STATE.respostas.pge?.[`${pai}_${APP_STATE.sublocal || "Geral"}`])
+                : (APP_STATE.respostas[tipo]?.[pai]);
+
                 el.classList.toggle("hidden", valorPai !== cond);
             }
         }
     });
-}
-// ============================================================
-// 13. INICIAR CADASTRO (ALINHADO AO FLUXO OFFLINE-FIRST)
-// ============================================================
-
-function initCadastro() {
-
-    document.getElementById("btn-cadastro-continuar").onclick = () => {
-
-        const avaliador = document.getElementById("avaliador").value.trim();
-        const local = document.getElementById("local").value.trim();
-        const data = document.getElementById("data_visita").value;
-
-        if (!avaliador || !local || !data) {
-            alert("Preencha todos os campos.");
-            return;
-        }
-
-        // Atualiza estado global
-        APP_STATE.avaliador = avaliador;
-        APP_STATE.local = local;
-        APP_STATE.data = data;
-
-        // Gera ID único consistente
-        const localFormatado = local.replace(/\s+/g, "").toUpperCase();
-
-        APP_STATE.id_vistoria = `VIST_${Date.now()}_${localFormatado}`;
-
-        // Persistência local (recuperação pós reload)
-        localStorage.setItem("avaliador", APP_STATE.avaliador);
-        localStorage.setItem("local", APP_STATE.local);
-        localStorage.setItem("data", APP_STATE.data);
-        localStorage.setItem("id_vistoria", APP_STATE.id_vistoria);
-
-        console.log("🆔 Nova vistoria iniciada:", APP_STATE.id_vistoria);
-
-        showScreen("screen-select-roteiro");
-    };
-
-    // ==========================================
-    // RECUPERAÇÃO AUTOMÁTICA SE RECARREGAR
-    // ==========================================
-
-    const avaliadorSalvo = localStorage.getItem("avaliador");
-    const localSalvo = localStorage.getItem("local");
-    const dataSalva = localStorage.getItem("data");
-    const idSalvo = localStorage.getItem("id_vistoria");
-
-    if (avaliadorSalvo && localSalvo && dataSalva && idSalvo) {
-
-        APP_STATE.avaliador = avaliadorSalvo;
-        APP_STATE.local = localSalvo;
-        APP_STATE.data = dataSalva;
-        APP_STATE.id_vistoria = idSalvo;
-
-        console.log("♻️ Vistoria recuperada:", APP_STATE.id_vistoria);
-
-        showScreen("screen-select-roteiro");
-
-    } else {
-        showScreen("screen-cadastro");
-    }
 }
 
 // ============================================================
@@ -834,144 +918,6 @@ async function baixarExcelConsolidado() {
     marcarComoConcluidoUI("excel");
 }
 
-// ============================================================
-// 15. BLOCO COMPLETO DE SINCRONIZAÇÃO (OFFLINE-FIRST)
-// IndexedDB -> Backend -> Limpeza local
-// ============================================================
-async function handleSincronizacao() {
-    if (!navigator.onLine) {
-        alert("Sem conexão! Os dados estão protegidos no IndexedDB.");
-        return;
-    }
-
-    UI_setLoading("sync", true, { loadingText: "A ENVIAR DADOS..." });
-
-    try {
-        if (!APP_STATE?.id_vistoria) throw new Error("Vistoria não inicializada.");
-
-        // 1) fotos do IndexedDB (blob)
-        const fotosNoBanco = await DB_API.getAllFotosVistoria(APP_STATE.id_vistoria);
-
-        // 2) respostas: achata {geral,pge,aa} -> {pergunta_id: resposta}
-        const respostasFlat = {};
-        const blocos = APP_STATE.respostas || {};
-        for (const k of Object.keys(blocos)) {
-            const obj = blocos[k];
-            if (obj && typeof obj === "object") {
-                for (const pid of Object.keys(obj)) {
-                    respostasFlat[String(pid)] = obj[pid];
-                }
-            }
-        }
-
-        // 3) local_id: se você só tem o texto, vira índice+1
-        let localIdNum = 1;
-        if (typeof APP_STATE.local === "string" && APP_STATE.local.trim()) {
-            const idx = LOCAIS_VISITA.indexOf(APP_STATE.local.trim());
-            if (idx >= 0) localIdNum = idx + 1;
-        }
-
-        // 4) monta FormData (API espera: payload + files)
-        const fd = new FormData();
-
-        const fotos_manifest = [];
-        const fotos = Array.isArray(fotosNoBanco) ? fotosNoBanco : [];
-
-        // helper: filename seguro (evita /, espaços, acentos, etc.)
-        const safeSlug = (s) => String(s || "")
-            .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
-            .replace(/[^a-zA-Z0-9_-]+/g, "_")
-            .replace(/_+/g, "_")
-            .replace(/^_+|_+$/g, "");
-
-        for (const f of fotos) {
-            const blob = f.blob_data || f.blob;
-            if (!blob) continue;
-
-            // IMPORTANTÍSSIMO: preservar foto_id se existir
-            const foto_id = String(f.foto_id || crypto.randomUUID());
-            const pergunta_id = String(f.pergunta_id || "foto_geral");
-
-            // filename precisa bater com o manifest no R
-            const filename = `${safeSlug(foto_id)}__${safeSlug(pergunta_id)}.jpg`;
-
-            fotos_manifest.push({
-                foto_id,
-                pergunta_id,
-                filename
-            });
-
-            // field name "files" (pra bater com req$files$files no R)
-            fd.append("files", blob, filename);
-        }
-
-        const payloadParaR = {
-            metadata: {
-                id_vistoria: String(APP_STATE.id_vistoria),
-                origem: "pwa_android"
-            },
-            core: {
-                data_execucao: APP_STATE.data || new Date().toISOString(),
-                local_id: String(localIdNum),
-                tecnico: String(APP_STATE.avaliador || "Não Informado"),
-                atividade: APP_STATE.tipoRoteiro || "supervisao",
-                usuario_id: APP_STATE.usuario_id || null
-            },
-            dados: {
-                respostas: respostasFlat,
-                fotos_manifest
-            }
-        };
-
-        // payload como STRING única (evita virar vetor no R)
-        fd.set("payload", JSON.stringify(payloadParaR));
-
-        // 5) envia (NÃO setar Content-Type manualmente)
-        const response = await fetch(
-            "https://strapless-christi-unspread.ngrok-free.dev/vistorias/sincronizar",
-            {
-                method: "POST",
-                headers: { "ngrok-skip-browser-warning": "true" },
-                body: fd
-            }
-        );
-
-        // Debug robusto: pega texto, tenta parsear JSON
-        const rawText = await response.text();
-        let resultado = {};
-        try {
-            resultado = rawText ? JSON.parse(rawText) : {};
-        } catch (_) {
-            resultado = { status: "erro", message: rawText || "Resposta não-JSON do servidor." };
-        }
-
-        if (!response.ok || resultado.status !== "sucesso") {
-            throw new Error(resultado.message || `Erro no servidor (HTTP ${response.status})`);
-        }
-
-        // 6) marca local como sincronizado (se existir)
-        if (window.DB_API && typeof DB_API.marcarComoSincronizado === "function") {
-            await DB_API.marcarComoSincronizado(APP_STATE.id_vistoria);
-        }
-
-        marcarComoConcluidoUI("servidor");
-        UI_setLoading("sync", false, { defaultText: "ENVIADO COM SUCESSO ✓" });
-
-        console.log("🚀 Sincronização concluída com sucesso!", {
-            vistoria: APP_STATE.id_vistoria,
-            fotos_enviadas: fotos_manifest.length
-        });
-        // teste temporario de payload final
-        console.log("📦 PAYLOAD FINAL:", payload);
-        console.log("📦 PAYLOAD STRING:", JSON.stringify(payload));
-
-
-    } catch (error) {
-        console.error("Erro na Sincronização:", error);
-        alert("Falha na Sincronização: " + error.message);
-        UI_setLoading("sync", false, { defaultText: "TENTAR NOVAMENTE" });
-    }
-}
 
 
 /** Gerencia estados de botões e spinners */
@@ -1062,6 +1008,24 @@ let __SYNC_LOCK = false;
 // -----------------------------
 // HELPERS
 // -----------------------------
+
+function _toDateInputValue(v) {
+  if (!v) return "";
+  const s = String(v);
+
+  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
+
+  if (/^\d{4}-\d{2}-\d{2}T/.test(s)) return s.slice(0, 10);
+
+  const d = new Date(s);
+  if (isNaN(d.getTime())) return "";
+
+  const yyyy = d.getFullYear();
+  const mm = String(d.getMonth() + 1).padStart(2, "0");
+  const dd = String(d.getDate()).padStart(2, "0");
+  return `${yyyy}-${mm}-${dd}`;
+}
+
 function _safeSlug(s) {
   return String(s || "")
     .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
@@ -1169,6 +1133,17 @@ async function sincronizarUmaVistoria(visita) {
   if (!id) throw new Error("Vistoria sem id_vistoria.");
 
   const { fd, fotos_manifest_len } = await _buildFormDataFromVisita(visita);
+
+  console.log("🟢 Enviando vistoria:", id);
+  for (const [k, v] of fd.entries()) {
+  if (k === "payload") {
+    try { console.log("payload(JSON):", JSON.parse(v)); } catch { console.log("payload(raw):", v); }
+    continue;
+  }
+  if (v instanceof File) console.log(` - ${k}: FILE name=${v.name} size=${v.size} type=${v.type}`);
+  else console.log(` - ${k}:`, v);
+}
+
 
   const resp = await fetch(SYNC_ENDPOINT, {
     method: "POST",
@@ -1281,8 +1256,16 @@ async function sincronizarPendentes({ showUI = true } = {}) {
 // BOTÃO / UI
 // -----------------------------
 async function handleSincronizacao() {
-  await sincronizarPendentes({ showUI: true });
+  if (__SYNC_LOCK) return;
+  __SYNC_LOCK = true;
+
+  try {
+    await sincronizarPendentes({ showUI: true });
+  } finally {
+    __SYNC_LOCK = false;
+  }
 }
+
 
 // -----------------------------
 // AUTO-SYNC AO VOLTAR ONLINE
