@@ -961,6 +961,10 @@ async function handleSincronizacao() {
             vistoria: APP_STATE.id_vistoria,
             fotos_enviadas: fotos_manifest.length
         });
+        // teste temporario de payload final
+        console.log("📦 PAYLOAD FINAL:", payload);
+        console.log("📦 PAYLOAD STRING:", JSON.stringify(payload));
+
 
     } catch (error) {
         console.error("Erro na Sincronização:", error);
