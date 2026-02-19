@@ -237,3 +237,4 @@ const DB_API = {
         });
     }
 };
+window.DB_API = DB_API;

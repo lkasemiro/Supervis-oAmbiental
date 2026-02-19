@@ -162,15 +162,24 @@
           </button>
 
           <!-- ✅ Status usado pelo app -->
-          <p id="status-sinc" class="text-[10px] text-gray-400 pt-2">Aguardando...</p>
+        <p id="status-sinc" class="text-[10px] text-gray-400 pt-2">Aguardando...</p>
 
-          <div class="pt-4 space-y-2">
-            <button onclick="showScreen('screen-formulario')" class="!min-h-0 py-3 text-[#0067ac] font-bold text-xs">← EDITAR RESPOSTAS</button>
-            <hr class="border-gray-100">
-            <button onclick="confirmarNovaVistoria()" class="!min-h-0 py-2 text-gray-300 text-[10px] font-black uppercase tracking-widest bg-transparent">
-              Iniciar Outra Vistoria
-            </button>
-          </div>
+        <div class="pt-4 space-y-2">
+          <button type="button"
+                  onclick="showScreen('screen-formulario')"
+                  class="!min-h-0 py-3 text-[#0067ac] font-bold text-xs">
+            ← EDITAR RESPOSTAS
+          </button>
+
+          <hr class="border-gray-100">
+
+          <button type="button"
+                  onclick="window.confirmarNovaVistoria && window.confirmarNovaVistoria()"
+                  class="!min-h-0 py-2 text-gray-500 text-[10px] font-black uppercase tracking-widest bg-transparent">
+            Iniciar Outra Vistoria
+          </button>
+        </div>
+
         </div>
       </div>
     </section>
