@@ -3,7 +3,7 @@
 // SERVICE WORKER – CEDAE VISTORIAS (OFFLINE + STALE-WHILE-REVALIDATE)
 // ============================================================
 
-const CACHE_NAME = 'cedae-vistorias-v28'; // <-- incremente sempre que mudar algo
+const CACHE_NAME = 'cedae-vistorias-v29'; // <-- incremente sempre que mudar algo
 
 // Helper: transforma './arquivo' em URL absoluta (chave consistente)
 const abs = (path) => new URL(path, self.location).toString();
