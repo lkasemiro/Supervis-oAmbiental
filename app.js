@@ -1000,7 +1000,7 @@ function marcarComoConcluidoUI(metodo, payloadExtra = {}) {
 // CONFIG
 // -----------------------------
 const SYNC_ENDPOINT = "https://strapless-christi-unspread.ngrok-free.dev/vistorias/sincronizar";
-//const SYNC_HEADERS = { "ngrok-skip-browser-warning": "true" };
+const SYNC_HEADERS = {}; 
 
 // trava anti-duplo clique / evento online repetido
 let __SYNC_LOCK = false;
@@ -1256,6 +1256,7 @@ async function sincronizarPendentes({ showUI = true } = {}) {
 // BOTÃO / UI
 // -----------------------------
 async function handleSincronizacao() {
+    alert("SYNC: clique detectado ✅");
   if (__SYNC_LOCK) return;
   __SYNC_LOCK = true;
 
