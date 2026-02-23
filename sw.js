@@ -3,7 +3,7 @@
 // SERVICE WORKER – CEDAE VISTORIAS (OFFLINE + STALE-WHILE-REVALIDATE)
 // ============================================================
 
-const CACHE_NAME = 'cedae-vistorias-v25';
+const CACHE_NAME = 'cedae-vistorias-v26';
 
 // Arquivos críticos (não podem falhar)
 const CORE_ASSETS = [
