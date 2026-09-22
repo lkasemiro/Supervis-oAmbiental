@@ -1,0 +1,32 @@
+{
+  "name": "supervis-oambiental",
+  "version": "1.0.0",
+  "description": "Formulário Técnico – Supervisão Ambiental",
+  "main": "app.js",
+  "type": "commonjs",
+  "directories": {
+    "lib": "lib"
+  },
+  "scripts": {
+    "start": "node app.js",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "dependencies": {
+    "cors": "^2.8.6",
+    "dotenv": "^18.0.3",
+    "express": "^5.2.1",
+    "multer": "^2.4.0",
+    "pg": "^8.23.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/lkasemiro/Supervis-oAmbiental.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/lkasemiro/Supervis-oAmbiental/issues"
+  },
+  "homepage": "https://github.com/lkasemiro/Supervis-oAmbiental#readme"
+}

@@ -1,23 +1,17 @@
-// sync_manager.js — v2 (BLOB + multipart/form-data) + TESTE DE FORMDATA
-// - Lê pendentes no IndexedDB
-// - Monta FormData: payload(JSON) + files(BLOB)
-// - Faz POST para Plumber
-// - Marca como sincronizado no IndexedDB
-// - Inclui teste REAL do body (fd instanceof FormData + dump entries)
-// Obs: NÃO defina Content-Type manualmente em multipart (o browser coloca boundary)
-
+// sync_manager.js — Conexão Direta Nuvem/Neon (sem ngrok)
 (function () {
   const SYNC = {};
 
   // =========================
   // CONFIG
   // =========================
-  SYNC.ENDPOINT = "https://strapless-christi-unspread.ngrok-free.dev/vistorias/sincronizar";
+  // Substitua pela URL da sua API hospedada na nuvem que grava no Neon:
+  SYNC.ENDPOINT = "https://sua-api-neon.onrender.com/vistorias/sincronizar";
 
-  // Se você precisar pular a warning do ngrok:
-  SYNC.HEADERS = { "ngrok-skip-browser-warning": "true" };
+  // Cabeçalhos padrão (ngrok removido)
+  SYNC.HEADERS = {};
 
-  // DEBUG: deixe true para diagnosticar no PC; no Android pode desligar
+  // DEBUG: Deixe true durante o desenvolvimento
   SYNC.DEBUG = true;
 
   let __LOCK = false;
@@ -50,7 +44,6 @@
       .replace(/^_+|_+$/g, "");
   }
 
-  // ✅ Mantém o "label estável" que você já vinha usando
   function toFlatRespostas(respostas) {
     const flat = {};
     const blocos = respostas || {};
@@ -68,70 +61,35 @@
   }
 
   // =========================
-  // TESTE REAL DO FORMDATA
-  // =========================
-  function debugDumpFormData(fd) {
-    log.i("body é FormData?", (fd instanceof FormData));
-
-    if (!(fd instanceof FormData)) return;
-
-    let totalFiles = 0;
-
-    for (const [k, v] of fd.entries()) {
-      if (k === "payload") {
-        log.i("payload(raw) len=", String(v).length);
-        if (SYNC.DEBUG) {
-          try { log.i("payload(JSON)", JSON.parse(v)); } catch { log.w("payload não é JSON parseável"); }
-        }
-      } else if (v instanceof File) {
-        totalFiles++;
-        log.i(`file field=${k} name=${v.name} size=${v.size} type=${v.type}`);
-      } else if (v instanceof Blob) {
-        // Alguns browsers podem registrar como Blob (sem name)
-        totalFiles++;
-        log.i(`blob field=${k} size=${v.size} type=${v.type}`);
-      } else {
-        log.i(`field=${k}`, v);
-      }
-    }
-
-    log.i("Total de arquivos/blobs anexados:", totalFiles);
-  }
-
-  // =========================
   // BUILD FORMDATA
   // =========================
   async function buildFormData(visita) {
     const id_vistoria = String(visita?.id_vistoria || "");
     if (!id_vistoria) throw new Error("Sem id_vistoria.");
 
-    // 1) Fotos (BLOB) — fonte da verdade: IndexedDB
+    // 1) Fotos (BLOB) — busca direto do IndexedDB
     const fotos = (window.DB_API && typeof window.DB_API.getAllFotosVistoria === "function")
       ? await window.DB_API.getAllFotosVistoria(id_vistoria)
       : [];
 
-    // 2) Payload JSON — alinhado ao backend atual (API “antiga” de JSON puro)
-    // A ideia aqui é: mesmo usando multipart, o payload mantém as chaves esperadas
+    // 2) Payload JSON estruturado para o schema do Neon
     const payload = {
-      id_vistoria,
+      codigo_vistoria: id_vistoria,
       tecnico: visita?.tecnico || visita?.avaliador || "Não Informado",
-      avaliador: visita?.avaliador || visita?.tecnico || "Não Informado",
-      local: visita?.local || "Não Informado",
-      data_hora: visita?.data_hora || visita?.data || new Date().toISOString(),
-      tipoRoteiro: visita?.tipoRoteiro || "geral",
-
-      // sua API atual espera isso:
-      respostas_detalhadas: toFlatRespostas(visita?.respostas || {})
+      colaborador: visita?.colaborador || "",
+      localidade: visita?.local || "Não Informado",
+      data_vistoria: visita?.data_hora || visita?.data || new Date().toISOString(),
+      tipo_roteiro: visita?.tipoRoteiro || "geral",
+      respostas: visita?.respostas || {},
+      respostas_flat: toFlatRespostas(visita?.respostas || {})
     };
 
-    // 3) FormData
+    // 3) Instancia o FormData
     const fd = new FormData();
     fd.set("payload", JSON.stringify(payload));
 
-    // 4) Anexar arquivos como "files"
-    // ✅ IMPORTANTÍSSIMO: anexar como File com nome garante compatibilidade melhor no backend
+    // 4) Anexa os arquivos binários das fotos
     let anexadas = 0;
-
     for (const f of (Array.isArray(fotos) ? fotos : [])) {
       const blob = f?.blob_data || f?.blob;
       if (!blob) continue;
@@ -139,18 +97,15 @@
       const foto_id = String(f?.foto_id || crypto.randomUUID());
       const pergunta_id = String(f?.pergunta_id || "foto_geral");
 
-      // camera.js gera jpeg; mas se vier diferente, tenta respeitar
       const mime = String(f?.mime_type || blob.type || "image/jpeg").toLowerCase();
       const ext =
         mime.includes("png") ? "png" :
         (mime.includes("jpg") || mime.includes("jpeg")) ? "jpg" :
-        mime.includes("webp") ? "webp" : "bin";
+        mime.includes("webp") ? "webp" : "jpg";
 
       const filename = `${safeSlug(foto_id)}__${safeSlug(pergunta_id)}.${ext}`;
 
-      // Converte Blob -> File (nome + type)
-      const file = new File([blob], filename, { type: blob.type || mime || "application/octet-stream" });
-
+      const file = new File([blob], filename, { type: blob.type || mime || "image/jpeg" });
       fd.append("files", file);
       anexadas++;
     }
@@ -161,11 +116,11 @@
   async function fetchJsonOrText(resp) {
     const raw = await resp.text();
     try { return raw ? JSON.parse(raw) : {}; }
-    catch { return { status: "erro", message: raw || "Resposta não-JSON." }; }
+    catch { return { status: "erro", message: raw || "Resposta não-JSON do servidor." }; }
   }
 
   // =========================
-  // SYNC — 1
+  // SYNC — ENVIO ÚNICO
   // =========================
   SYNC.sincronizarUma = async function (visita) {
     const id = String(visita?.id_vistoria || "");
@@ -173,55 +128,46 @@
 
     const { fd, payload, anexadas } = await buildFormData(visita);
 
-    log.i("→ Enviando", { id_vistoria: id, anexadas, endpoint: SYNC.ENDPOINT });
-    log.i("Payload keys:", Object.keys(payload));
-
-    // ✅ TESTE REAL AQUI (antes do fetch)
-    if (SYNC.DEBUG) debugDumpFormData(fd);
+    log.i("→ Enviando para a nuvem:", { codigo_vistoria: id, fotos_anexadas: anexadas, endpoint: SYNC.ENDPOINT });
 
     let resp;
     try {
       resp = await fetch(SYNC.ENDPOINT, {
         method: "POST",
-        // NÃO setar Content-Type em FormData: o browser define boundary
         headers: { ...SYNC.HEADERS },
         body: fd
       });
     } catch (e) {
-      throw new Error(`Falha de rede (ngrok/API fora do ar?): ${e?.message || e}`);
+      throw new Error(`Falha de conexão com a API: ${e?.message || e}`);
     }
 
     const out = await fetchJsonOrText(resp);
-
-    log.i("Resposta servidor:", { http: resp.status, out });
 
     if (!resp.ok || out.status !== "sucesso") {
       throw new Error(out.message || `Erro HTTP ${resp.status}`);
     }
 
-    // marca como sincronizado no IndexedDB
+    // Marca o registro local como sincronizado no IndexedDB
     if (window.DB_API && typeof window.DB_API.marcarComoSincronizado === "function") {
       await window.DB_API.marcarComoSincronizado(id);
     } else {
-      log.w("DB_API.marcarComoSincronizado indisponível.");
+      log.w("DB_API.marcarComoSincronizado não está definido.");
     }
 
     return out;
   };
 
   // =========================
-  // SYNC — pendentes
+  // SYNC — PROCESSA TODAS AS PENDÊNCIAS
   // =========================
   SYNC.sincronizarPendentes = async function ({ showUI = true } = {}) {
     if (__LOCK) return;
     __LOCK = true;
 
     try {
-      log.i("Disparo sync. onLine =", navigator.onLine);
-
       if (!navigator.onLine) {
         setStatus("Sem conexão.");
-        if (showUI) alert("Sem conexão. Os dados permanecem no aparelho.");
+        if (showUI) alert("Sem conexão à internet. Os dados permanecem salvos com segurança no aparelho.");
         return;
       }
 
@@ -230,12 +176,10 @@
       }
 
       if (showUI) setLoading(true, { loadingText: "A ENVIAR PENDÊNCIAS..." });
-      setStatus("Verificando pendências...");
+      setStatus("Verificando pendências no banco local...");
 
       const pendentes = await window.DB_API.getVistoriasPendentes();
       const total = Array.isArray(pendentes) ? pendentes.length : 0;
-
-      log.i("Pendentes:", total);
 
       if (!total) {
         setStatus("Sem pendências.");
@@ -255,14 +199,13 @@
           ok++;
         } catch (e) {
           falhas++;
-          log.w("Falha vistoria:", id, e?.message || e);
-          // segue adiante
+          log.w("Falha ao sincronizar vistoria:", id, e?.message || e);
         }
       }
 
       const msg = falhas === 0
         ? `Sincronização concluída: ${ok}/${total} enviadas.`
-        : `Sincronização concluída: ${ok}/${total} enviadas, ${falhas} falharam.`;
+        : `Sincronização concluída: ${ok}/${total} enviadas, ${falhas} falhas.`;
 
       setStatus(msg);
 
@@ -279,15 +222,14 @@
 
   SYNC.handleSincronizacao = () => SYNC.sincronizarPendentes({ showUI: true });
 
-  // Auto-sync ao voltar online
+  // Dispara automaticamente quando a conexão é restabelecida
   window.addEventListener("online", () => {
-    log.i("Online novamente — auto-sync silencioso.");
+    log.i("Conexão detectada — iniciando auto-sync em segundo plano.");
     SYNC.sincronizarPendentes({ showUI: false });
   });
 
-  // Expor global
   window.SYNC = SYNC;
   window.handleSincronizacao = SYNC.handleSincronizacao;
 
-  log.i("✅ sync_manager.js carregado (multipart+BLOB) + teste FormData.");
+  log.i("✅ sync_manager.js carregado (Pronto para conexão direta com o Neon).");
 })();

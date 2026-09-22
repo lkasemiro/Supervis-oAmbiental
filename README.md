@@ -5,7 +5,7 @@ Aplicação Web Progressiva (PWA) desenvolvida para coleta de dados offline em c
 Funcionalidades:
   Envio de formulários padronizados (mobile e desktop)
   Registro de imagens e coordenadas
-  Sincronização com banco de dados online
+  Sincronização com banco de dados online -- em desenvolvimento (22/09/2026)
   Armazenamento local de dados via indexedDB.js
   Consolidação automática das respostas em arquivo XLSX integrado
   Suporte offline por meio de sw.js (Service Worker)
@@ -27,13 +27,22 @@ Estrutura do Projeto:
     index.html
     indexedDB.js
     style.css
-    /roteiros
+    roteiros.js
     icon.png
     app.js
-    manifest.json
+   
     sw.js
+    manifest.json
+    
+    package-lock.json
+    package.json
+  
+    camera.js (* adicionado antes do primeiro teste)
+    sync_manager.js (* adicionado antes do primeiro teste)
+
+
     /lib/tailwind.js
     /lib/excel.min.js
+    /node_modules
     
-    manifest.json
-    service-worker.js
+    
