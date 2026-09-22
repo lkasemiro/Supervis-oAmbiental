@@ -6,7 +6,7 @@
   // CONFIG
   // =========================
   // Substitua pela URL da sua API hospedada na nuvem que grava no Neon:
-  SYNC.ENDPOINT = "https://sua-api-neon.onrender.com/vistorias/sincronizar";
+  SYNC.ENDPOINT = "https://api-supervisao-ambiental.onrender.com/vistorias/sincronizar";
 
   // Cabeçalhos padrão (ngrok removido)
   SYNC.HEADERS = {};
