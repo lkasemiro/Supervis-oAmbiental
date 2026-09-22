@@ -2,13 +2,13 @@
   "name": "supervis-oambiental",
   "version": "1.0.0",
   "description": "Formulário Técnico – Supervisão Ambiental",
-  "main": "app.js",
+  "main": "server.js",
   "type": "commonjs",
   "directories": {
     "lib": "lib"
   },
   "scripts": {
-    "start": "node app.js",
+    "start": "node server.js",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "dependencies": {
